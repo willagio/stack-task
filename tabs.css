@@ -1,0 +1,174 @@
+/* Tabs Container - Index Sticker Style */
+.tabs-container {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    padding: 0;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+    overflow: hidden;
+}
+
+.tabs-scroll {
+    flex: 1;
+    overflow-x: auto;
+    overflow-y: hidden;
+    /* Hide scrollbar completely */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.tabs-scroll::-webkit-scrollbar {
+    display: none;
+}
+
+.tabs-list {
+    display: flex;
+    gap: 0;
+    min-width: min-content;
+    height: 100%;
+}
+
+/* Index Sticker Tab Design */
+.tab {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 10px 12px;
+    background: rgba(0, 0, 0, 0.3);
+    border-right: 1px solid var(--border-color);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    position: relative;
+    user-select: none;
+    min-width: 80px;
+    justify-content: center;
+}
+
+.tab:first-child {
+    border-left: none;
+}
+
+.tab:hover {
+    background: rgba(102, 126, 234, 0.15);
+}
+
+.tab-active {
+    background: var(--primary-gradient);
+    border-right-color: transparent;
+    position: relative;
+    z-index: 1;
+}
+
+.tab-active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: white;
+    opacity: 0.8;
+}
+
+.tab-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+}
+
+.tab-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    transition: all 0.15s ease;
+    opacity: 0;
+    margin-left: -2px;
+}
+
+.tab:hover .tab-close {
+    opacity: 0.7;
+}
+
+.tab-close:hover {
+    opacity: 1 !important;
+    color: #f5576c;
+    transform: scale(1.2);
+}
+
+/* Compact Add Button */
+.add-category-btn {
+    width: 40px;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(102, 126, 234, 0.1);
+    border: none;
+    border-left: 1px solid var(--border-color);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+}
+
+.add-category-btn:hover {
+    background: rgba(102, 126, 234, 0.2);
+}
+
+.add-category-btn:active {
+    background: rgba(102, 126, 234, 0.3);
+}
+
+/* Drag and Drop States for Tabs */
+.tab.dragging-tab {
+    opacity: 0.4;
+    cursor: grabbing;
+}
+
+.tab.drag-over-left {
+    box-shadow: -3px 0 0 0 #667eea;
+}
+
+.tab.drag-over-right {
+    box-shadow: 3px 0 0 0 #667eea;
+}
+
+.tab {
+    cursor: grab;
+}
+
+.tab:active {
+    cursor: grabbing;
+}
+
+/* Animation for tab switching */
+@keyframes tabFade {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.task-stack,
+.completed-tasks,
+.archived-tasks {
+    animation: tabFade 0.3s ease;
+}

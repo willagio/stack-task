@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stack Task Organizer</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="tabs.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <div class="app">
+            <header class="header">
+                <h1 class="title">Task Stack</h1>
+                <div class="stack-indicator">
+                    <span class="stack-count">0</span>
+                    <span class="stack-label">tasks</span>
+                </div>
+            </header>
+
+            <div class="tabs-container">
+                <div class="tabs-scroll">
+                    <div id="tabsList" class="tabs-list"></div>
+                </div>
+                <button id="addCategoryBtn" class="add-category-btn" title="Add new category">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="input-section">
+                <input 
+                    type="text" 
+                    id="taskInput" 
+                    class="task-input" 
+                    placeholder="Enter a task and press Enter..."
+                    autocomplete="off"
+                >
+                <button id="popButton" class="pop-button" disabled>
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M10 4V16M10 4L6 8M10 4L14 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    Pop Task
+                </button>
+            </div>
+
+            <div class="tasks-section">
+                <div class="section-header">
+                    <h2>Active Stack</h2>
+                </div>
+                <div id="taskStack" class="task-stack"></div>
+            </div>
+
+            <div class="archive-section collapsible-section collapsed">
+                <div class="section-header clickable">
+                    <h2>
+                        <svg class="toggle-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                            <path d="M6 8L10 12L14 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        Archive
+                    </h2>
+                </div>
+                <div id="archivedTasks" class="archived-tasks section-content"></div>
+            </div>
+
+            <div class="completed-section collapsible-section collapsed">
+                <div class="section-header clickable">
+                    <h2>
+                        <svg class="toggle-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                            <path d="M6 8L10 12L14 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        Completed
+                    </h2>
+                </div>
+                <div id="completedTasks" class="completed-tasks section-content"></div>
+            </div>
+
+            <div class="footer-actions">
+                <button id="exportBtn" class="footer-btn" title="Export tasks to JSON file">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <path d="M8 2V10M8 10L5 7M8 10L11 7M2 12V13C2 13.5523 2.44772 14 3 14H13C13.5523 14 14 13.5523 14 13V12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    Export
+                </button>
+                <button id="importBtn" class="footer-btn" title="Import tasks from JSON file">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <path d="M8 10V2M8 2L5 5M8 2L11 5M2 12V13C2 13.5523 2.44772 14 3 14H13C13.5523 14 14 13.5523 14 13V12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    Import
+                </button>
+                <input type="file" id="importFile" accept=".json" style="display: none;">
+            </div>
+        </div>
+    </div>
+
+    <script src="file-db.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+# OS Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor directories and files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+npm-debug.log*
+
+# Temporary files
+*.tmp
+.cache/
+
+# Backup files
+*.bak
+*~
+
+# Node modules (if you add any build tools later)
+node_modules/
+
+# Environment files
+.env
+.env.local
+
+# Build outputs (if you add a build process)
+dist/
+build/
+
+# Test coverage
+coverage/
+
+# Exported task backups (optional - uncomment if you don't want to track them)
+# tasks-backup-*.json
