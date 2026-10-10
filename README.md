@@ -1,81 +1,56 @@
+# Stack Task Organizer
 
-# 🧠 Stack Task Organizer
-> **The intuitive, distraction-free task manager designed for the ADHD brain.**
+A small task manager that keeps your tasks in a stack, so you work on one thing at a time. It runs in the browser with plain HTML, CSS and JavaScript: no build step, no dependencies.
 
-![Stack Task Organizer Banner](https://img.shields.io/badge/Focus-100%25-blueviolet?style=for-the-badge) ![Status](https://img.shields.io/badge/Status-Active-success?style=for-the-badge) ![Vibe](https://img.shields.io/badge/Vibe-Immaculate-ff69b4?style=for-the-badge)
+![Task stack with the top task highlighted](docs/screenshots/stack.png)
 
-## 🤔 Why "Stack"? (The ADHD Philosophy)
+## How it works
 
-Traditional to-do lists are overwhelming. You see a mountain of 50 tasks, get paralyzed, and do nothing. 
+- **Stack:** a new task goes on top. The top task is highlighted and is the one to work on; the rest are numbered below it.
+- **Complete:** "Complete top task" moves the top task to the Completed list. Tasks can also be archived, deleted, or moved up and down with the buttons on each row (or dragged with the mouse).
+- **Categories:** each category (`Work` and `Personal` to start with) has its own stack, shown as tabs. Add, rename and delete them with the buttons next to the tabs, or double-click a tab to rename it. Drag tabs, or press `Alt` + arrow keys, to reorder them.
+- **Archive and Completed:** collapsible lists per category. Restore a task to the bottom of its stack, or delete it for good.
+- **Undo:** completing, archiving, deleting and importing show an Undo toast for a few seconds (also `Ctrl`/`Cmd` + `Z`). Only the latest action can be undone.
+- **Keyboard and touch:** everything is reachable by keyboard (arrow keys switch tabs), and the layout adapts to phone-sized screens.
 
-**Stack Task Organizer** changes the game by treating your tasks like a **Stack (LIFO - Last In, First Out)**. 
+| Completed list with Undo | Phone |
+| --- | --- |
+| ![Completed list expanded, with an Undo toast](docs/screenshots/completed.png) | ![The app on a phone-sized screen](docs/screenshots/mobile.png) |
 
-*   **Focus on ONE thing:** You only see what's at the top.
-*   **Don't panic:** The rest is safely stacked underneath.
-*   **Stay flowy:** Pop tasks off as you destroy them.
+An empty start screen is in [docs/screenshots/empty.png](docs/screenshots/empty.png).
 
-It's not just a list; it's a **flow state generator**.
+## Run it
 
----
+Open `index.html` in a browser, or serve the folder:
 
-## ✨ Killer Features
+```sh
+npm run serve        # http://127.0.0.1:4173/  (uses node, nothing to install)
+```
 
-### 📑 Index Sticker Tabs
-Organize your life without the clutter. 
-*   **Zero visual noise:** Tabs look like physical index stickers. No scrollbars, no padding, just labels.
-*   **Work / Personal / Projects:** Keep your contexts separate so your work stress doesn't bleed into your personal chill time.
-*   **Smart Defaults:** Comes with `Work` and `Personal` ready to go.
+The Inter font is loaded from Google Fonts when available; without it the system font is used.
 
-### ⚡ The Stack Workflow
-*   **Push:** Add a task. It goes to the top. It is now your **Sole Purpose**.
-*   **Pop:** Finished? Click "Pop Task". It moves to your Completed pile with a satisfying interaction.
-*   **Drag & Drop:** Changed your mind? Drag tasks to reorder your priorities instantly.
+## Your data
 
-### 🎨 Design That "Feels Good"
-*   **Dark Mode Native:** Sleek, high-contrast dark theme that's easy on the eyes.
-*   **Glassmorphism:** Subtle gradients and blurs that make the UI feel premium.
-*   **Micro-interactions:** Smooth animations for every action. Because dopamine matters.
+Everything stays in your browser. There is no server and no account.
 
-### 🛡️ Private & Secure
-*   **100% Local:** Your data lives in your browser (IndexedDB). 
-*   **No Cloud, No Accounts:** We don't want your email. We don't want your data.
-*   **Import/Export:** Own your data. Export to JSON anytime for backups.
+- Tasks are stored as JSON in `localStorage` under the key `fileDB`: `{ tasks, completed, archived, categories, currentCategory, schemaVersion }`.
+- **Export** downloads that data as `tasks-backup-YYYY-MM-DD.json`. **Import** checks the file first, asks before replacing your current data, and can be undone. Files over 5 MB or with invalid tasks are rejected without changing anything.
+- Data from earlier versions loads as is. If only the older separate keys (`taskStack`, `completedTasks`, `archivedTasks`, `categories`, `currentCategory`) exist, they are migrated into `fileDB`.
+- If the stored `fileDB` cannot be parsed, the raw text is kept under `fileDB.backup-<timestamp>` and you are told about it.
+- Clearing site data deletes your tasks. Export a backup if they matter.
 
----
+## Development
 
-## 🚀 How to Use
+```sh
+npm test                 # unit tests, Node's built-in test runner, no install needed
+npm install              # once, for the browser tests and screenshots
+npx playwright install chromium
+npm run test:e2e         # smoke tests in headless Chromium, desktop and phone viewport
+npm run screenshots      # regenerates docs/screenshots/*.png
+```
 
-1.  **Type & Enter:** Type a task in the box. Hit Enter. Boom, it's on the stack.
-2.  **Do the Thing:** Look at the top task. Do that task. Ignore the rest.
-3.  **Pop It:** Click the big pink button. Feel the satisfaction.
-4.  **Organize:** 
-    *   Click `+` to add a new category tab. 
-    *   Double-click a tab to rename it. 
-    *   Drag tabs to reorder them.
+Source layout: `state.js` (task and category logic), `storage.js` (`localStorage`, import and export), `ui.js` (toast, live region, dialog), `render.js` (DOM), `dnd.js` (drag and drop), `app.js` (event wiring). They are classic scripts loaded in that order by `index.html`, so the page also works from `file://`.
 
----
+## License
 
-## 🛠️ Tech Stack
-
-Built with vanilla web technologies because simplicity is key.
-
-*   **HTML5**
-*   **CSS3** (Variables, Flexbox, Grid, Animations)
-*   **JavaScript** (ES6+, IndexedDB for storage)
-*   **Zero Dependencies** (Bloat-free zone)
-
----
-
-## 🤝 Contributing
-
-Got an idea to make it even more ADHD-friendly?
-
-1.  Fork it.
-2.  Create your feature branch (`git checkout -b feature/AmazingFeature`).
-3.  Commit your changes (`git commit -m 'Add some AmazingFeature'`).
-4.  Push to the branch (`git push origin feature/AmazingFeature`).
-5.  Open a Pull Request.
-
----
-
-> *"The secret to getting ahead is getting started."* — Mark Twain (probably had ADHD)
+MIT, see [LICENSE](LICENSE).
