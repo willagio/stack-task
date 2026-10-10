@@ -168,6 +168,50 @@ test('data written by the original version loads, with the selected tab kept', a
     expect(ids.slice(0, 3)).toEqual([1700000000001, 1700000000002, 1700000000003]);
 });
 
+test('original data beyond today\'s input limits, plus one bad item, loads without loss', async ({ page }) => {
+    const longText = 'Long note. '.repeat(600).slice(0, 6000);
+    const longCategory = `"Q4" <b>plans</b> & 'stuff' ${'x'.repeat(120)}`.slice(0, 120);
+    const raw = JSON.stringify({
+        tasks: [
+            { text: 'Write report', id: 1700000000001, createdAt: '2024-01-05T10:00:00.000Z', category: 'Work' },
+            { text: longText, id: 1700000000002, createdAt: '2024-01-05T10:05:00.000Z', category: 'Work' },
+            { text: 'In the long tab', id: 1700000000003, createdAt: '2024-01-05T10:06:00.000Z', category: longCategory },
+            { id: 1700000000009, category: 'Work' } // no text: the only item that is dropped
+        ],
+        completed: [{ text: 'Done in long tab', id: 1700000000004, createdAt: '2024-01-04T09:00:00.000Z', category: longCategory, completedAt: '2024-01-04T12:00:00.000Z' }],
+        archived: [],
+        categories: ['Work', 'Personal', longCategory]
+    });
+    await page.goto('/');
+    await page.evaluate(value => { localStorage.clear(); localStorage.setItem('fileDB', value); }, raw);
+    await page.reload();
+
+    await expect(page.locator('#toast')).toContainText('1 unreadable item skipped');
+    await expect(page.locator('.tab .tab-name')).toHaveText(['Work', 'Personal', longCategory]);
+    await expect(page.locator('#taskStack .task-text')).toHaveText([longText, 'Write report']);
+    await page.locator('.tab', { hasText: 'Q4' }).click();
+    await expect(topTask(page)).toHaveText('In the long tab');
+    await page.locator('.completed-section .section-toggle').click();
+    await expect(page.locator('#completedTasks .completed-text')).toHaveText(['Done in long tab']);
+
+    // after an action, fileDB still holds everything; the untouched original is in the backup
+    await addTask(page, 'new one');
+    const stored = await page.evaluate(() => {
+        const backups = Object.keys(localStorage).filter(k => k.startsWith('fileDB.backup-'));
+        return { db: JSON.parse(localStorage.getItem('fileDB')), backup: backups.map(k => localStorage.getItem(k)) };
+    });
+    expect(stored.db.tasks.map(t => t.text)).toEqual(['Write report', longText, 'In the long tab', 'new one']);
+    expect(stored.db.tasks.slice(0, 3).map(t => t.id)).toEqual([1700000000001, 1700000000002, 1700000000003]);
+    expect(stored.db.completed.map(t => t.text)).toEqual(['Done in long tab']);
+    expect(stored.db.categories).toEqual(['Work', 'Personal', longCategory]);
+    expect(stored.backup).toEqual([raw]);
+
+    // the warning was shown once: a reload is quiet
+    await page.reload();
+    await expect(page.locator('.tab-active .tab-name')).toHaveText(longCategory);
+    await expect(page.locator('#toast')).toBeHidden();
+});
+
 test('legacy-only keys (no fileDB) are migrated', async ({ page }) => {
     await page.goto('/');
     await page.evaluate(() => {

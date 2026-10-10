@@ -151,7 +151,172 @@ test('duplicate ids from old data are repaired instead of lost', () => {
     assert.equal(data.tasks.length + data.completed.length, 3);
 });
 
+// ---- Data the first version could write, beyond today's input limits ----
+
+const LONG_TEXT = 'Long note. '.repeat(600).slice(0, 6000);
+const LONG_CATEGORY = `"Q4" <b>plans</b> & 'stuff' ${'x'.repeat(120)}`.slice(0, 120);
+
+// Exactly what FileDB.saveToStorage() wrote: JSON.stringify(data), no currentCategory/schemaVersion.
+function originalFileDB() {
+    return JSON.stringify({
+        tasks: [
+            { text: LONG_TEXT, id: 1700000000101, createdAt: '2024-02-01T10:00:00.000Z', category: 'Work' },
+            { text: 'In the long tab', id: 1700000000102, createdAt: '2024-02-01T10:01:00.000Z', category: LONG_CATEGORY }
+        ],
+        completed: [
+            { text: 'Done in long tab', id: 1700000000103, createdAt: '2024-02-01T09:00:00.000Z', category: LONG_CATEGORY, completedAt: '2024-02-01T09:30:00.000Z' }
+        ],
+        archived: [],
+        categories: ['Work', 'Personal', LONG_CATEGORY]
+    });
+}
+
+test('ORIGINAL data with a 6000-char task and a 120-char category loads without loss', () => {
+    const raw = originalFileDB();
+    const ls = createLocalStorageStub({ fileDB: raw });
+    const loaded = Storage.load(ls);
+    assert.equal(loaded.source, 'fileDB');
+    assert.deepEqual(loaded.warnings, []);
+    assert.equal(loaded.backupKey, null);
+    const expected = JSON.parse(raw);
+    assert.deepEqual(loaded.data.tasks, expected.tasks);
+    assert.deepEqual(loaded.data.completed, expected.completed);
+    assert.deepEqual(loaded.data.categories, expected.categories);
+    assert.equal(loaded.data.tasks[0].text.length, 6000);
+    assert.deepEqual(ls.keys(), ['fileDB'], 'nothing written, no backup');
+    assert.equal(ls.getItem('fileDB'), raw);
+});
+
+test('long text and category survive an edit, save and reload', () => {
+    const ls = createLocalStorageStub({ fileDB: originalFileDB() });
+    const state = State.createState(Storage.load(ls).data);
+    State.switchCategory(state, LONG_CATEGORY);
+    assert.equal(State.push(state, 'new one').ok, true);
+    assert.equal(Storage.save(ls, state).ok, true);
+    const again = Storage.load(ls).data;
+    assert.equal(again.tasks[0].text, LONG_TEXT);
+    assert.equal(again.currentCategory, LONG_CATEGORY);
+    assert.deepEqual(again.categories, ['Work', 'Personal', LONG_CATEGORY]);
+    assert.equal(again.tasks.length, 3);
+});
+
+test('legacy keys holding long text/categories migrate too', () => {
+    const data = JSON.parse(originalFileDB());
+    const ls = createLocalStorageStub({
+        taskStack: JSON.stringify(data.tasks),
+        completedTasks: JSON.stringify(data.completed),
+        archivedTasks: '[]',
+        categories: JSON.stringify(data.categories),
+        currentCategory: LONG_CATEGORY
+    });
+    const loaded = Storage.load(ls);
+    assert.equal(loaded.source, 'legacy');
+    assert.deepEqual(loaded.data.tasks, data.tasks);
+    assert.equal(loaded.data.currentCategory, LONG_CATEGORY);
+    assert.deepEqual(JSON.parse(ls.getItem('fileDB')).tasks, data.tasks);
+});
+
+test('stored data keeps quotes/HTML in categories, ISO, numeric and missing timestamps, and adds missing categories', () => {
+    const raw = JSON.stringify({
+        tasks: [
+            { text: 'a', id: 1, createdAt: 1700000000000, category: `<i>"it's"</i>` },
+            { text: 'b', id: 2, category: 'Only on a task' }
+        ],
+        categories: ['Work', `<i>"it's"</i>`]
+    });
+    const loaded = Storage.load(createLocalStorageStub({ fileDB: raw }));
+    assert.deepEqual(loaded.warnings, []);
+    assert.deepEqual(loaded.data.categories, ['Work', `<i>"it's"</i>`, 'Only on a task']);
+    assert.equal(loaded.data.tasks[0].createdAt, 1700000000000);
+    assert.equal('createdAt' in loaded.data.tasks[1], false);
+    assert.deepEqual(loaded.data.completed, []);
+    assert.deepEqual(loaded.data.archived, []);
+});
+
+function mixedFileDB() {
+    return JSON.stringify({
+        tasks: [
+            { text: 'good 1', id: 1, createdAt: '2024-01-01T00:00:00Z', category: 'Work' },
+            null,
+            { id: 3, category: 'Work' },
+            { text: 'bad id', id: 'a b <x>', category: 'Work' },
+            { text: 'bad date', id: 5, createdAt: 'whenever', category: 'Work' },
+            { text: 42, id: 6, category: 'Work' },
+            { text: 'odd category', id: 7, category: 9 }
+        ],
+        completed: [{ text: 'done', id: 8, completedAt: {}, category: 'Personal' }],
+        categories: ['Work', 'Personal', 3]
+    });
+}
+
+test('one bad item never discards the rest: usable items load, the original is backed up', () => {
+    const raw = mixedFileDB();
+    const ls = createLocalStorageStub({ fileDB: raw });
+    const loaded = Storage.load(ls);
+    assert.equal(loaded.source, 'fileDB');
+    assert.deepEqual(loaded.data.tasks.map(t => t.text), ['good 1', 'bad id', 'bad date', '42', 'odd category']);
+    assert.equal(loaded.data.tasks[1].id !== 'a b <x>', true, 'unsafe id replaced');
+    assert.equal('createdAt' in loaded.data.tasks[2], false);
+    assert.equal(loaded.data.tasks[4].category, 'Work');
+    assert.equal(loaded.data.completed[0].text, 'done');
+    assert.deepEqual(loaded.data.categories, ['Work', 'Personal', '3']);
+    assert.equal(loaded.warnings.length, 1);
+    assert.match(loaded.warnings[0], /2 unreadable items skipped/);
+    assert.equal(ls.getItem(loaded.backupKey), raw);
+    // the cleaned data was written back, so the next load is quiet and makes no new backup
+    const again = Storage.load(ls);
+    assert.deepEqual(again.warnings, []);
+    assert.deepEqual(again.data, loaded.data);
+    assert.equal(ls.keys().filter(k => k.startsWith(Storage.BACKUP_PREFIX)).length, 1);
+});
+
+test('if a partly bad fileDB cannot be backed up, it is not overwritten', () => {
+    const raw = mixedFileDB();
+    const ls = createLocalStorageStub({ fileDB: raw });
+    ls.failSet = true;
+    const loaded = Storage.load(ls);
+    assert.equal(loaded.canSave, false);
+    assert.equal(loaded.data.tasks.length, 5);
+    assert.equal(ls.getItem('fileDB'), raw);
+});
+
+test('a readable fileDB wins over differing legacy keys', () => {
+    const ls = createLocalStorageStub({ fileDB: originalFileDB(), ...original.legacy });
+    const loaded = Storage.load(ls);
+    assert.equal(loaded.source, 'fileDB');
+    assert.equal(loaded.data.tasks[0].text, LONG_TEXT);
+    assert.equal(loaded.data.tasks.length, 2);
+});
+
+test('an unreadable fileDB falls back to legacy keys only with a backup and a warning', () => {
+    const ls = createLocalStorageStub({ fileDB: '{"tasks": [oops', ...original.legacy });
+    const loaded = Storage.load(ls);
+    assert.equal(loaded.source, 'legacy');
+    assert.equal(ls.getItem(loaded.backupKey), '{"tasks": [oops');
+    assert.ok(loaded.warnings.some(w => w.includes(loaded.backupKey)));
+    assert.ok(loaded.warnings.some(w => /Older saved data was loaded/.test(w)));
+    assert.deepEqual(JSON.parse(ls.getItem('fileDB')).tasks, original.expected.tasks);
+    assert.deepEqual(Storage.load(ls).warnings, [], 'warned once');
+});
+
+test('bad items in legacy keys are skipped with a warning; legacy keys stay as the original', () => {
+    const tasks = JSON.stringify([{ text: 'kept', id: 1, category: 'Work' }, { nope: true }]);
+    const ls = createLocalStorageStub({ taskStack: tasks, categories: '["Work"]' });
+    const loaded = Storage.load(ls);
+    assert.equal(loaded.source, 'legacy');
+    assert.deepEqual(loaded.data.tasks.map(t => t.text), ['kept']);
+    assert.match(loaded.warnings.join(' '), /1 unreadable item skipped/);
+    assert.equal(ls.getItem('taskStack'), tasks);
+});
+
 // ---- Export / import ---------------------------------------------------
+
+test('old exports with long text and long categories import (only the file size is limited)', () => {
+    const result = Storage.parseImport(JSON.stringify(JSON.parse(originalFileDB()), null, 2));
+    assert.equal(result.ok, true);
+    assert.equal(result.data.tasks[0].text, LONG_TEXT);
+    assert.deepEqual(result.data.categories, ['Work', 'Personal', LONG_CATEGORY]);
+});
 
 test('export -> import round trip', () => {
     const s = sample();
