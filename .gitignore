@@ -38,3 +38,7 @@ coverage/
 
 # Exported task backups (optional - uncomment if you don't want to track them)
 # tasks-backup-*.json
+
+# Dev tooling output
+test-results/
+playwright-report/
