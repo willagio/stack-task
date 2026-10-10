@@ -22,7 +22,7 @@ function seed() {
             task('Submit the expense report', 'w1', 'Work', 6 * HOUR),
             task('Update the onboarding checklist', 'w2', 'Work', 5 * HOUR),
             task('Book a meeting room for Thursday', 'w3', 'Work', 4 * HOUR),
-            task('Draft release notes for v2.4', 'w4', 'Work', 3 * HOUR),
+            task('Print the agenda', 'w4', 'Work', 3 * HOUR),
             task('Reply to Dana about the Q3 schedule', 'w5', 'Work', 2 * HOUR),
             task('Review pull request #128', 'w6', 'Work', 30 * MIN),
             task('Buy groceries', 'p1', 'Personal', 3 * HOUR),
@@ -79,7 +79,8 @@ async function main() {
         problems = problems.concat(s.problems);
         await s.context.close();
 
-        // 2. Several stacked tasks; the newest one is the focus. Hover shows the row actions.
+        // 2. Several stacked tasks; the newest one is the focus. Hover shows the row actions;
+        //    the hovered row has short text so the buttons do not cover any of it.
         s = await open(browser, desktop, seed());
         await s.page.locator('#taskStack .task-item').nth(2).hover();
         await s.page.waitForTimeout(400); // let the hover transition finish
