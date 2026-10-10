@@ -25,7 +25,7 @@
                 <div class="tabs-scroll">
                     <div id="tabsList" class="tabs-list"></div>
                 </div>
-                <button id="addCategoryBtn" class="add-category-btn" title="Add new category">
+                <button id="addCategoryBtn" class="add-category-btn" title="Add new category" aria-label="Add new category" type="button">
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                         <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                     </svg>
@@ -39,8 +39,10 @@
                     class="task-input" 
                     placeholder="Enter a task and press Enter..."
                     autocomplete="off"
+                    maxlength="280"
+                    aria-label="New task"
                 >
-                <button id="popButton" class="pop-button" disabled>
+                <button id="popButton" class="pop-button" type="button" disabled>
                     <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                         <path d="M10 4V16M10 4L6 8M10 4L14 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
@@ -80,13 +82,13 @@
             </div>
 
             <div class="footer-actions">
-                <button id="exportBtn" class="footer-btn" title="Export tasks to JSON file">
+                <button id="exportBtn" class="footer-btn" type="button" title="Export tasks to JSON file">
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                         <path d="M8 2V10M8 10L5 7M8 10L11 7M2 12V13C2 13.5523 2.44772 14 3 14H13C13.5523 14 14 13.5523 14 13V12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
                     Export
                 </button>
-                <button id="importBtn" class="footer-btn" title="Import tasks from JSON file">
+                <button id="importBtn" class="footer-btn" type="button" title="Import tasks from JSON file">
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                         <path d="M8 10V2M8 2L5 5M8 2L11 5M2 12V13C2 13.5523 2.44772 14 3 14H13C13.5523 14 14 13.5523 14 13V12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
@@ -97,7 +99,10 @@
         </div>
     </div>
 
-    <script src="file-db.js"></script>
-    <script src="script.js"></script>
+    <script src="state.js"></script>
+    <script src="storage.js"></script>
+    <script src="render.js"></script>
+    <script src="dnd.js"></script>
+    <script src="app.js"></script>
 </body>
 </html>
