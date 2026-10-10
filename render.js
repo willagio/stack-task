@@ -35,6 +35,12 @@
         ] },
         down: { size: 14, shapes: [
             ['path', { d: 'M3.5 5.5L7 9L10.5 5.5', stroke: 'currentColor', 'stroke-width': 1.6, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }]
+        ] },
+        play: { size: 14, shapes: [
+            ['path', { d: 'M4.5 3L11 7L4.5 11Z', fill: 'currentColor', stroke: 'currentColor', 'stroke-width': 1.2, 'stroke-linejoin': 'round' }]
+        ] },
+        pause: { size: 14, shapes: [
+            ['path', { d: 'M4.5 3V11M9.5 3V11', stroke: 'currentColor', 'stroke-width': 2, 'stroke-linecap': 'round' }]
         ] }
     };
 
@@ -120,26 +126,101 @@
             }
         }
 
+        function reducedMotion() {
+            const win = doc.defaultView;
+            try {
+                return !!(win && win.matchMedia && win.matchMedia('(prefers-reduced-motion: reduce)').matches);
+            } catch (e) {
+                return false;
+            }
+        }
+
+        function stackItems(container) {
+            return Array.from(container.children).filter(node => node.dataset && node.dataset.id !== undefined);
+        }
+
+        // FLIP: where each item was before a re-render, so it can slide to its new place
+        function snapshotStack(container) {
+            const before = new Map();
+            stackItems(container).forEach(node => {
+                if (typeof node.getBoundingClientRect !== 'function') return;
+                before.set(node.dataset.id, { rect: node.getBoundingClientRect(), top: node.classList.contains('top-task') });
+            });
+            return before;
+        }
+
+        function animateStack(container, before) {
+            if (reducedMotion()) return;
+            stackItems(container).forEach(node => {
+                if (typeof node.animate !== 'function') return;
+                const prev = before.get(node.dataset.id);
+                if (!prev) {
+                    node.animate(
+                        [{ opacity: 0, transform: 'translateY(-10px)' }, { opacity: 1, transform: 'none' }],
+                        { duration: 240, easing: 'ease-out' }
+                    );
+                    return;
+                }
+                const isTop = node.classList.contains('top-task');
+                if (isTop && !prev.top) node.classList.add('became-top');
+                const next = node.getBoundingClientRect();
+                const dy = prev.rect.top - next.top;
+                const dh = prev.rect.height - next.height;
+                if (Math.abs(dy) < 1 && Math.abs(dh) < 1) return;
+                const from = { transform: `translateY(${dy}px)` };
+                const to = { transform: 'none' };
+                if (Math.abs(dh) >= 1) {
+                    from.height = from.minHeight = `${prev.rect.height}px`;
+                    to.height = to.minHeight = `${next.height}px`;
+                }
+                node.animate([from, to], { duration: 340, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' });
+            });
+        }
+
+        // "0:42" while a timer runs or once time was logged; nothing for an untouched task
+        function timeLabel(task, now) {
+            const running = State.isRunning(task);
+            const elapsed = State.elapsedMs(task, now);
+            if (!running && elapsed <= 0) return null;
+            return el('span', {
+                class: running ? 'task-time running' : 'task-time',
+                text: State.formatClock(elapsed),
+                attrs: { title: running ? 'Timer running' : 'Time spent' },
+                data: { timeFor: task.id }
+            });
+        }
+
         function renderStack(state) {
             const visible = State.inCategory(state.tasks, state.currentCategory);
             if (visible.length === 0) {
                 refs.taskStack.replaceChildren(emptyState('No tasks in stack', 'Add one to get started!'));
                 return;
             }
+            const now = Date.now();
+            const before = snapshotStack(refs.taskStack);
             // Top of the stack first
             const items = visible.map((task, index) => {
                 const isTop = index === visible.length - 1;
                 const name = shorten(task.text);
                 const data = id => ({ id: task.id, action: id });
+                // The top task carries no label: its size and the "Up next" divider below it say what it is
+                const running = State.isRunning(task);
+                const children = [
+                    el('div', { class: 'drag-handle', attrs: { 'aria-hidden': 'true' } }, [icon('grip')]),
+                    el('div', { class: 'task-text', text: task.text, attrs: { title: task.text } })
+                ];
+                const time = timeLabel(task, now);
+                if (time) children.push(time);
+                if (!isTop) children.push(el('div', { class: 'task-index', text: `#${visible.length - index}` }));
                 return el('div', {
                     class: isTop ? 'task-item top-task' : 'task-item',
-                    attrs: { draggable: 'true', role: 'listitem' },
+                    attrs: { role: 'listitem' },
                     data: { id: task.id }
                 }, [
-                    el('div', { class: 'drag-handle', attrs: { 'aria-hidden': 'true' } }, [icon('grip')]),
-                    el('div', { class: 'task-text', text: task.text, attrs: { title: task.text } }),
-                    el('div', { class: 'task-index', text: isTop ? 'TOP' : `#${visible.length - index}` }),
+                    ...children,
                     el('div', { class: 'task-actions' }, [
+                        iconButton(running ? 'task-action-btn timer-btn running' : 'task-action-btn timer-btn', running ? 'pause' : 'play',
+                            running ? `Pause timer for "${name}"` : `Start timer for "${name}"`, data('timer')),
                         iconButton('task-action-btn move-up-btn', 'up', `Move "${name}" up`, data('up'), isTop),
                         iconButton('task-action-btn move-down-btn', 'down', `Move "${name}" down`, data('down'), index === 0),
                         iconButton('task-action-btn archive-btn', 'archive', `Archive "${name}"`, data('archive')),
@@ -147,7 +228,16 @@
                     ])
                 ]);
             }).reverse();
+            if (items.length > 1) {
+                const rest = items.length - 1;
+                items.splice(1, 0, el('div', {
+                    class: 'stack-divider',
+                    text: `Up next · ${rest}`,
+                    attrs: { 'aria-hidden': 'true' }
+                }));
+            }
             refs.taskStack.replaceChildren(...items);
+            animateStack(refs.taskStack, before);
         }
 
         function renderHistory(container, tasks, spec) {
@@ -157,6 +247,8 @@
             }
             container.replaceChildren(...tasks.map(task => {
                 const name = shorten(task.text);
+                const spent = State.elapsedMs(task, 0);
+                const when = State.formatTime(task[spec.timeField]);
                 return el('div', {
                     class: `history-item ${spec.itemClass}`,
                     attrs: { role: 'listitem' },
@@ -164,7 +256,7 @@
                 }, [
                     el('div', { class: `history-content ${spec.contentClass}` }, [
                         el('div', { class: `history-text ${spec.textClass}`, text: task.text }),
-                        el('div', { class: `history-time ${spec.timeClass}`, text: State.formatTime(task[spec.timeField]) })
+                        el('div', { class: `history-time ${spec.timeClass}`, text: spent > 0 ? `${when} · ${State.formatDuration(spent)}` : when })
                     ]),
                     el('div', { class: `history-actions ${spec.actionsClass}` }, [
                         iconButton(`history-btn ${spec.restoreClass}`, 'restore', `Restore "${name}" to the stack`, { id: task.id }),

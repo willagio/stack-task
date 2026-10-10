@@ -138,14 +138,14 @@ test('move up / down swaps with the neighbour in the same category and announces
     const app = boot();
     app.add('a'); app.add('b'); app.add('c');          // display: c, b, a
     app.tab('Personal').click(); app.add('p'); app.tab('Work').click();
-    const buttons = () => app.$('taskStack').querySelectorAll('.task-item').map(i => i.querySelectorAll('.task-action-btn'));
-    assert.equal(buttons()[0][0].disabled, true, 'top task cannot move up');
-    assert.equal(buttons()[2][1].disabled, true, 'bottom task cannot move down');
-    buttons()[1][0].click();                           // b up -> b, c, a
+    const buttons = () => app.$('taskStack').querySelectorAll('.task-item').map(i => ({ up: i.querySelector('.move-up-btn'), down: i.querySelector('.move-down-btn') }));
+    assert.equal(buttons()[0].up.disabled, true, 'top task cannot move up');
+    assert.equal(buttons()[2].down.disabled, true, 'bottom task cannot move down');
+    buttons()[1].up.click();                           // b up -> b, c, a
     assert.deepEqual(app.stored().tasks.filter(t => t.category === 'Work').map(t => t.text), ['a', 'c', 'b']);
     assert.equal(app.topText(), 'b');
     assert.match(app.live(), /Moved "b" up\. Position 1 of 3\./);
-    app.$('taskStack').querySelectorAll('.task-item')[0].querySelectorAll('.task-action-btn')[1].click(); // b down
+    buttons()[0].down.click();                         // b down
     assert.deepEqual(app.stored().tasks.filter(t => t.category === 'Work').map(t => t.text), ['a', 'b', 'c']);
     assert.equal(app.stored().tasks.find(t => t.text === 'p').category, 'Personal');
 });
@@ -402,19 +402,41 @@ test('collapsible sections toggle from a real button and keep aria-expanded in s
     assert.equal(toggle.getAttribute('aria-expanded'), 'false');
 });
 
-test('drag and drop reorders the stack (delegated listeners)', () => {
+test('pointer drag reorders the stack: rows slide aside, drop above the top row (delegated listeners)', () => {
     const app = boot();
     ['a', 'b', 'c'].forEach(t => app.add(t));
-    assert.equal(app.$('taskStack').listenerCount('drop'), 1);
-    const items = () => app.$('taskStack').querySelectorAll('.task-item');
-    const [top, , bottom] = items(); // displayed c, b, a
-    const dt = { setData() {}, effectAllowed: '', dropEffect: '' };
-    bottom.dispatch('dragstart', { dataTransfer: dt });
-    top.dispatch('dragover', { dataTransfer: dt, clientY: 5 });
-    assert.ok(top.classList.contains('drag-over-top'));
-    top.dispatch('drop', { dataTransfer: dt, clientY: 5 }); // upper half of the top item -> above it
-    bottom.dispatch('dragend', {});
+    const stack = app.$('taskStack');
+    assert.equal(stack.listenerCount('pointerdown'), 1);
+    const [top, middle, bottom] = stack.querySelectorAll('.task-item'); // displayed c, b, a
+    // Lay the rows out vertically (the fake DOM has no layout): 56px rows, 8px apart, divider included
+    stack.children.forEach((node, i) => { node.getBoundingClientRect = () => ({ top: i * 64, left: 0, width: 300, height: 56 }); });
+    bottom.dispatch('pointerdown', { pointerId: 1, pointerType: 'mouse', button: 0, clientX: 50, clientY: 220 });
+    bottom.dispatch('pointermove', { pointerId: 1, clientX: 50, clientY: 20 }); // up past the top row
+    assert.ok(bottom.classList.contains('dragging'));
+    assert.match(top.style.transform, /translateY\(64px\)/);    // the top row moved down to make room
+    assert.match(middle.style.transform, /translateY\(64px\)/);
+    bottom.dispatch('pointerup', { pointerId: 1, clientX: 50, clientY: 20 });
     assert.deepEqual(app.stored().tasks.map(t => t.text), ['b', 'c', 'a']);
     assert.equal(app.topText(), 'a');
-    assert.equal(app.$('taskStack').querySelectorAll('.drag-over-top').length, 0);
+    assert.equal(stack.querySelectorAll('.dragging').length, 0);
+    assert.equal(stack.classList.contains('sorting'), false);
+});
+
+test('a pointer drag that ends where it started changes nothing and slides back', () => {
+    const app = boot();
+    ['a', 'b'].forEach(t => app.add(t));
+    const stack = app.$('taskStack');
+    const [top] = stack.querySelectorAll('.task-item');
+    stack.children.forEach((node, i) => { node.getBoundingClientRect = () => ({ top: i * 64, left: 0, width: 300, height: 56 }); });
+    top.dispatch('pointerdown', { pointerId: 2, pointerType: 'mouse', button: 0, clientX: 10, clientY: 28 });
+    top.dispatch('pointermove', { pointerId: 2, clientX: 10, clientY: 40 });
+    assert.ok(top.classList.contains('dragging'));
+    top.dispatch('pointerup', { pointerId: 2, clientX: 10, clientY: 40 });
+    assert.equal(top.style.transform, '');
+    assert.equal(app.topText(), 'b');
+    // clicking a button inside a row never starts a drag
+    const button = top.querySelector('.archive-btn');
+    button.dispatch('pointerdown', { pointerId: 3, pointerType: 'mouse', button: 0, clientX: 10, clientY: 28 });
+    button.dispatch('pointermove', { pointerId: 3, clientX: 10, clientY: 200 });
+    assert.equal(top.classList.contains('dragging'), false);
 });

@@ -93,12 +93,47 @@
             const token = this.captureFocus();
             this.renderer.renderAll(this.state);
             this.restoreFocus(token);
+            this.syncTicker();
         }
 
         commit() {
             this.ui.hideUndo();
             this.render();
             this.save();
+        }
+
+        // ---- Timer ticking -------------------------------------------------
+        // The running task's clock is updated in place once a second; nothing else is re-rendered.
+
+        syncTicker() {
+            const running = State.runningTask(this.state);
+            if (running && !this.ticker && typeof this.win.setInterval === 'function') {
+                this.ticker = this.win.setInterval(() => this.tick(), 1000);
+            } else if (!running && this.ticker) {
+                this.win.clearInterval(this.ticker);
+                this.ticker = null;
+            }
+        }
+
+        tick() {
+            const running = State.runningTask(this.state);
+            if (!running) { this.syncTicker(); return; }
+            const label = this.refs.taskStack.querySelector('.task-time.running');
+            if (label && State.sameId(label.dataset.timeFor, running.id)) {
+                label.textContent = State.formatClock(State.elapsedMs(running));
+            }
+        }
+
+        toggleTimer(id) {
+            const task = this.findTask(this.state.tasks, id);
+            if (!task) return;
+            const wasRunning = State.isRunning(task);
+            if (!State.toggleTimer(this.state, id).ok) return;
+            this.commit();
+            const spent = State.elapsedMs(this.findTask(this.state.tasks, id));
+            this.ui.announce(wasRunning
+                ? `Timer paused for ${quote(task.text)} at ${State.formatDuration(spent)}.`
+                : `Timer started for ${quote(task.text)}.`);
         }
 
         // Applies `change` (a State operation) and offers to undo it.
@@ -173,8 +208,17 @@
                 // The item itself is gone: only a keyboard user needs to be moved on to its neighbour
                 if (!item && token.keyboard) item = items[Math.min(token.index, items.length - 1)];
                 if (item) {
-                    const buttons = Array.from(item.querySelectorAll('button')).filter(button => !button.disabled);
-                    const target = buttons.find(button => (button.dataset.action || button.className) === token.key) || buttons[0];
+                    // The same button if it is still enabled; otherwise the nearest enabled one after it
+                    const all = Array.from(item.querySelectorAll('button'));
+                    const enabled = all.filter(button => !button.disabled);
+                    const keyOf = button => button.dataset.action || button.className;
+                    let target = enabled.find(button => keyOf(button) === token.key);
+                    if (!target) {
+                        const at = all.findIndex(button => keyOf(button) === token.key);
+                        target = enabled.find(button => all.indexOf(button) > at)
+                            || enabled.filter(button => all.indexOf(button) < at).pop()
+                            || enabled[0];
+                    }
                     if (target) target.focus();
                 } else if (token.keyboard) {
                     const section = token.list.closest('.collapsible-section');
@@ -216,12 +260,25 @@
                 if (!button) return;
                 const id = button.dataset.id;
                 switch (button.dataset.action) {
+                    case 'timer': this.toggleTimer(id); break;
                     case 'up': this.moveTask(id, 'up'); break;
                     case 'down': this.moveTask(id, 'down'); break;
                     case 'archive': this.archiveTask(id); break;
                     case 'remove': this.removeTask(id); break;
                     default: break;
                 }
+            });
+            // Double-click (or F2 with the keyboard) edits a task's text in place
+            refs.taskStack.addEventListener('dblclick', event => {
+                const item = event.target.closest && event.target.closest('.task-item');
+                if (item && !event.target.closest('button, input')) this.startEdit(item, false);
+            });
+            refs.taskStack.addEventListener('keydown', event => {
+                if (event.key !== 'F2') return;
+                const item = event.target.closest && event.target.closest('.task-item');
+                if (!item || event.target.closest('input')) return;
+                event.preventDefault();
+                this.startEdit(item, true);
             });
             refs.archivedTasks.addEventListener('click', event => {
                 const restore = event.target.closest('.restore-btn');
@@ -319,8 +376,10 @@
         popTask() {
             const index = State.topTaskIndex(this.state);
             if (index === -1) return;
-            const name = quote(this.state.tasks[index].text);
-            this.withUndo(`Completed ${name}.`, () => State.pop(this.state));
+            const task = this.state.tasks[index];
+            const spent = State.elapsedMs(task);
+            const detail = spent > 0 ? ` in ${State.formatDuration(spent)}` : '';
+            this.withUndo(`Completed ${quote(task.text)}${detail}.`, () => State.pop(this.state));
         }
 
         findTask(list, id) {
@@ -333,6 +392,56 @@
             this.commit();
             const total = State.inCategory(this.state.tasks, task.category).length;
             this.ui.announce(`Moved ${quote(task.text)} ${direction}. Position ${State.positionFromTop(this.state, id)} of ${total}.`);
+        }
+
+        // Swaps the row's text for an input; Enter or leaving the field saves, Escape cancels.
+        startEdit(item, viaKeyboard) {
+            if (item.querySelector('.task-edit')) return;
+            const task = this.findTask(this.state.tasks, item.dataset.id);
+            const textNode = item.querySelector('.task-text');
+            if (!task || !textNode) return;
+            const input = this.doc.createElement('input');
+            input.type = 'text';
+            input.className = 'task-edit';
+            input.value = task.text;
+            input.maxLength = Math.max(State.MAX_TASK_LENGTH, task.text.length);
+            input.setAttribute('aria-label', `Edit task "${task.text}"`);
+            input.setAttribute('autocomplete', 'off');
+            input.setAttribute('enterkeyhint', 'done');
+            item.classList.add('editing');
+            textNode.hidden = true;
+            textNode.parentNode.insertBefore(input, textNode);
+
+            let done = false;
+            const finish = save => {
+                if (done) return;
+                done = true;
+                const value = input.value;
+                input.parentNode.removeChild(input);
+                textNode.hidden = false;
+                item.classList.remove('editing');
+                let row = item;
+                if (save && value.trim() && value.trim() !== task.text) {
+                    const result = State.renameTask(this.state, task.id, value);
+                    if (this.report(result)) {
+                        this.commit();
+                        this.ui.announce(`Renamed to ${quote(result.task.text)}.`);
+                        row = this.itemsOf(this.refs.taskStack).find(node => State.sameId(node.dataset.id, task.id));
+                    }
+                }
+                if (viaKeyboard && row) {
+                    const button = Array.from(row.querySelectorAll('button')).find(b => !b.disabled);
+                    if (button) button.focus();
+                }
+            };
+            input.addEventListener('keydown', event => {
+                if (event.isComposing || event.keyCode === 229) return;
+                if (event.key === 'Enter') { event.preventDefault(); finish(true); }
+                else if (event.key === 'Escape') { event.preventDefault(); finish(false); }
+            });
+            input.addEventListener('blur', () => finish(true));
+            input.focus();
+            input.select();
         }
 
         removeTask(id) {

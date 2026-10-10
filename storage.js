@@ -142,6 +142,21 @@
             }
             task[field] = raw[field];
         }
+        // Timer fields (added later; optional). A running timer only makes sense on an active task.
+        if (raw.timeSpent !== undefined && raw.timeSpent !== null) {
+            if (typeof raw.timeSpent === 'number' && Number.isFinite(raw.timeSpent) && raw.timeSpent >= 0) {
+                task.timeSpent = raw.timeSpent;
+            } else if (!problem(report, 'repaired', `${path}.timeSpent must be a non-negative number.`)) {
+                return null;
+            }
+        }
+        if (!timeField && raw.timerStartedAt !== undefined && raw.timerStartedAt !== null) {
+            if (validTime(raw.timerStartedAt)) {
+                task.timerStartedAt = raw.timerStartedAt;
+            } else if (!problem(report, 'repaired', `${path}.timerStartedAt must be a date string or a number.`)) {
+                return null;
+            }
+        }
         if (!categories.includes(category)) categories.push(category);
         return task;
     }

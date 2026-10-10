@@ -373,7 +373,7 @@ test.describe('phone-sized touch viewport', () => {
         await expect(page.locator('#taskStack .top-task .task-actions')).toHaveCSS('opacity', '1');
         const selectors = ['#addTaskBtn', '#popButton', '#taskInput', '#addCategoryBtn', '#renameCategoryBtn',
             '#deleteCategoryBtn', '.tab-button', '.section-toggle', '#exportBtn', '#importBtn',
-            '#taskStack .task-item:nth-child(2) .task-action-btn'];
+            '#taskStack .task-item:not(.top-task) .task-action-btn'];
         for (const selector of selectors) {
             const handles = await page.locator(selector).elementHandles();
             expect(handles.length, selector + ' exists').toBeGreaterThan(0);

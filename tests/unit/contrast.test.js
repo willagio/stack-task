@@ -20,6 +20,7 @@ const ratio = (a, b) => {
 };
 
 const text = rgb(variable('text-primary'));
+const onAccent = rgb(variable('text-on-accent')); // dark text on the bright accent fill
 const secondary = rgb(variable('text-secondary'));
 const card = rgb(variable('bg-card'));
 const input = rgb(variable('bg-input'));
@@ -32,7 +33,8 @@ const pairs = [
     ['danger icons on the card', rgb(variable('danger')), card],
     ['focus colour on the card', rgb(variable('focus')), card],
     ...hexes(variable('primary-gradient')).map(h => [`white text on primary gradient ${h}`, text, rgb(h)]),
-    ...hexes(variable('secondary-gradient')).map(h => [`white text on secondary gradient ${h}`, text, rgb(h)])
+    ...hexes(variable('secondary-gradient')).map(h => [`dark text on the accent fill ${h}`, onAccent, rgb(h)]),
+    ['accent text on the card', rgb(variable('accent')), card]
 ];
 
 for (const [name, fg, bg] of pairs) {

@@ -95,11 +95,71 @@
         return { ok: true, task };
     }
 
-    // Completes the top task of the current category (not the global top).
+    function renameTask(state, id, text) {
+        const index = indexOfId(state.tasks, id);
+        if (index === -1) return { ok: false };
+        const trimmed = typeof text === 'string' ? text.trim() : '';
+        if (!trimmed) return { ok: false, error: 'Task is empty.' };
+        if (trimmed.length > MAX_TASK_LENGTH) {
+            return { ok: false, error: `Task is too long (max ${MAX_TASK_LENGTH} characters).` };
+        }
+        state.tasks[index] = { ...state.tasks[index], text: trimmed };
+        return { ok: true, task: state.tasks[index] };
+    }
+
+    // ---- Timers --------------------------------------------------------
+    // A task accumulates `timeSpent` (ms). While its timer runs, `timerStartedAt` holds the start
+    // time, so the elapsed time is derived from the clock and survives reloads. One timer at a time.
+
+    function isRunning(task) {
+        return typeof task.timerStartedAt === 'string' && !Number.isNaN(Date.parse(task.timerStartedAt));
+    }
+
+    function elapsedMs(task, now) {
+        const base = typeof task.timeSpent === 'number' && task.timeSpent > 0 ? task.timeSpent : 0;
+        if (!isRunning(task)) return base;
+        const at = now === undefined ? Date.now() : now;
+        return base + Math.max(0, at - Date.parse(task.timerStartedAt));
+    }
+
+    // The task with its running time folded into timeSpent and the timer cleared.
+    function settled(task, now) {
+        if (!isRunning(task)) return task;
+        const { timerStartedAt, ...rest } = task;
+        return { ...rest, timeSpent: elapsedMs(task, now) };
+    }
+
+    function runningTask(state) {
+        return state.tasks.find(isRunning) || null;
+    }
+
+    function pauseTimer(state, id, now) {
+        const index = indexOfId(state.tasks, id);
+        if (index === -1) return { ok: false };
+        state.tasks[index] = settled(state.tasks[index], now);
+        return { ok: true, task: state.tasks[index] };
+    }
+
+    function startTimer(state, id, now) {
+        const index = indexOfId(state.tasks, id);
+        if (index === -1) return { ok: false };
+        const at = now === undefined ? Date.now() : now;
+        state.tasks = state.tasks.map(task => settled(task, at));
+        state.tasks[index] = { ...state.tasks[index], timerStartedAt: new Date(at).toISOString() };
+        return { ok: true, task: state.tasks[index] };
+    }
+
+    function toggleTimer(state, id, now) {
+        const index = indexOfId(state.tasks, id);
+        if (index === -1) return { ok: false };
+        return isRunning(state.tasks[index]) ? pauseTimer(state, id, now) : startTimer(state, id, now);
+    }
+
+    // Completes the top task of the current category (not the global top). Its timer stops.
     function pop(state) {
         const index = topTaskIndex(state);
         if (index === -1) return { ok: false };
-        const task = state.tasks.splice(index, 1)[0];
+        const task = settled(state.tasks.splice(index, 1)[0]);
         const done = { ...task, completedAt: new Date().toISOString() };
         state.completed.unshift(done);
         return { ok: true, task: done };
@@ -108,7 +168,7 @@
     function archiveTask(state, id) {
         const index = indexOfId(state.tasks, id);
         if (index === -1) return { ok: false };
-        const task = state.tasks.splice(index, 1)[0];
+        const task = settled(state.tasks.splice(index, 1)[0]);
         const archived = { ...task, archivedAt: new Date().toISOString() };
         state.archived.unshift(archived);
         return { ok: true, task: archived };
@@ -278,6 +338,26 @@
         return date.toLocaleDateString();
     }
 
+    // Live clock: m:ss under an hour, h:mm:ss from then on
+    function formatClock(ms) {
+        const total = Math.max(0, Math.floor(ms / 1000));
+        const h = Math.floor(total / 3600);
+        const m = Math.floor((total % 3600) / 60);
+        const sec = total % 60;
+        const two = n => String(n).padStart(2, '0');
+        return h > 0 ? `${h}:${two(m)}:${two(sec)}` : `${m}:${two(sec)}`;
+    }
+
+    // Compact summary for finished work: 45s, 12m, 1h 05m
+    function formatDuration(ms) {
+        const total = Math.max(0, Math.round(ms / 1000));
+        if (total < 60) return `${total}s`;
+        const h = Math.floor(total / 3600);
+        const m = Math.round((total % 3600) / 60);
+        if (h === 0) return `${m}m`;
+        return `${h}h ${String(m).padStart(2, '0')}m`;
+    }
+
     const api = {
         DEFAULT_CATEGORIES,
         MAX_TASK_LENGTH,
@@ -290,6 +370,15 @@
         topTaskIndex,
         countInCategory,
         push,
+        renameTask,
+        isRunning,
+        elapsedMs,
+        runningTask,
+        startTimer,
+        pauseTimer,
+        toggleTimer,
+        formatClock,
+        formatDuration,
         pop,
         archiveTask,
         removeTask,
