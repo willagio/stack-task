@@ -1,22 +1,18 @@
-/* Tabs Container - Index Sticker Style */
+/* Category tabs: index-sticker style row with category tools on the right */
 .tabs-container {
     display: flex;
     align-items: stretch;
-    gap: 0;
-    padding: 0;
     background: var(--bg-card);
     border-bottom: 1px solid var(--border-color);
     flex-shrink: 0;
-    overflow: hidden;
 }
 
 .tabs-scroll {
     flex: 1;
+    min-width: 0;
     overflow-x: auto;
     overflow-y: hidden;
-    /* Hide scrollbar completely */
     scrollbar-width: none;
-    -ms-overflow-style: none;
 }
 
 .tabs-scroll::-webkit-scrollbar {
@@ -25,150 +21,133 @@
 
 .tabs-list {
     display: flex;
-    gap: 0;
     min-width: min-content;
     height: 100%;
 }
 
-/* Index Sticker Tab Design */
 .tab {
     display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 10px 12px;
+    position: relative;
+    min-width: 72px;
     background: rgba(0, 0, 0, 0.3);
     border-right: 1px solid var(--border-color);
-    cursor: pointer;
-    transition: all 0.15s ease;
-    white-space: nowrap;
-    position: relative;
-    user-select: none;
-    min-width: 80px;
-    justify-content: center;
-}
-
-.tab:first-child {
-    border-left: none;
-}
-
-.tab:hover {
-    background: rgba(102, 126, 234, 0.15);
-}
-
-.tab-active {
-    background: var(--primary-gradient);
-    border-right-color: transparent;
-    position: relative;
-    z-index: 1;
-}
-
-.tab-active::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: white;
-    opacity: 0.8;
-}
-
-.tab-name {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-primary);
-    letter-spacing: 0.3px;
-    text-transform: uppercase;
-}
-
-.tab-close {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 14px;
-    height: 14px;
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    font-size: 14px;
-    line-height: 1;
-    padding: 0;
-    transition: all 0.15s ease;
-    opacity: 0;
-    margin-left: -2px;
-}
-
-.tab:hover .tab-close {
-    opacity: 0.7;
-}
-
-.tab-close:hover {
-    opacity: 1 !important;
-    color: #f5576c;
-    transform: scale(1.2);
-}
-
-/* Compact Add Button */
-.add-category-btn {
-    width: 40px;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(102, 126, 234, 0.1);
-    border: none;
-    border-left: 1px solid var(--border-color);
-    color: var(--text-primary);
-    cursor: pointer;
-    transition: all 0.15s ease;
-    flex-shrink: 0;
-}
-
-.add-category-btn:hover {
-    background: rgba(102, 126, 234, 0.2);
-}
-
-.add-category-btn:active {
-    background: rgba(102, 126, 234, 0.3);
-}
-
-/* Drag and Drop States for Tabs */
-.tab.dragging-tab {
-    opacity: 0.4;
-    cursor: grabbing;
-}
-
-.tab.drag-over-left {
-    box-shadow: -3px 0 0 0 #667eea;
-}
-
-.tab.drag-over-right {
-    box-shadow: 3px 0 0 0 #667eea;
-}
-
-.tab {
     cursor: grab;
+    transition: background 0.15s ease;
 }
 
 .tab:active {
     cursor: grabbing;
 }
 
-/* Animation for tab switching */
-@keyframes tabFade {
-    from {
-        opacity: 0;
-        transform: translateY(4px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+.tab:hover {
+    background: rgba(142, 156, 255, 0.15);
 }
 
-.task-stack,
-.completed-tasks,
-.archived-tasks {
-    animation: tabFade 0.3s ease;
+.tab-active,
+.tab-active:hover {
+    background: var(--primary-gradient);
+    border-right-color: transparent;
+    z-index: 1;
+}
+
+.tab-active::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 3px;
+    background: #fff;
+    pointer-events: none;
+}
+
+.tab-button {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 48px;
+    padding: 0 16px;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: inherit;
+    white-space: nowrap;
+}
+
+.tab-active .tab-button,
+.tab-button:hover {
+    color: var(--text-primary);
+}
+
+.tab-button:focus-visible {
+    outline-offset: -4px;
+}
+
+.tab-name {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+}
+
+.category-tools {
+    display: flex;
+    flex-shrink: 0;
+    border-left: 1px solid var(--border-color);
+}
+
+.category-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    min-height: 48px;
+    background: rgba(142, 156, 255, 0.1);
+    border: none;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.category-btn + .category-btn {
+    border-left: 1px solid var(--border-color);
+}
+
+.category-btn:hover:not(:disabled) {
+    background: rgba(142, 156, 255, 0.22);
+}
+
+.category-btn-danger:hover:not(:disabled) {
+    color: var(--danger);
+}
+
+.category-btn:disabled {
+    color: var(--text-secondary);
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.category-btn:focus-visible {
+    outline-offset: -4px;
+}
+
+/* Drag and drop states */
+.tab.dragging-tab {
+    opacity: 0.4;
+    cursor: grabbing;
+}
+
+.tab.drag-over-left {
+    box-shadow: -3px 0 0 0 var(--accent);
+}
+
+.tab.drag-over-right {
+    box-shadow: 3px 0 0 0 var(--accent);
+}
+
+@media (pointer: coarse) {
+    .category-btn {
+        width: 44px;
+    }
 }

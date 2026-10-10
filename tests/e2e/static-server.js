@@ -16,35 +16,41 @@ const TYPES = {
     '.svg': 'image/svg+xml'
 };
 
-const server = http.createServer((req, res) => {
-    let pathname;
-    try {
-        pathname = decodeURIComponent(req.url.split(/[?#]/)[0]);
-    } catch (e) {
-        res.writeHead(400).end('Bad request');
-        return;
-    }
-    if (pathname.endsWith('/')) pathname += 'index.html';
-    const file = path.resolve(ROOT, '.' + pathname);
-    const rel = path.relative(ROOT, file);
-    // Only the app files; never node_modules, .git or tests
-    if (rel.startsWith('..') || path.isAbsolute(rel) || /^(\.git|node_modules|tests)(\/|$)/.test(rel)) {
-        res.writeHead(404).end('Not found');
-        return;
-    }
-    fs.readFile(file, (err, body) => {
-        if (err) {
+function createServer() {
+    return http.createServer((req, res) => {
+        let pathname;
+        try {
+            pathname = decodeURIComponent(req.url.split(/[?#]/)[0]);
+        } catch (e) {
+            res.writeHead(400).end('Bad request');
+            return;
+        }
+        if (pathname.endsWith('/')) pathname += 'index.html';
+        const file = path.resolve(ROOT, '.' + pathname);
+        const rel = path.relative(ROOT, file);
+        // Only the app files; never node_modules, .git or tests
+        if (rel.startsWith('..') || path.isAbsolute(rel) || /^(\.git|node_modules|tests)(\/|$)/.test(rel)) {
             res.writeHead(404).end('Not found');
             return;
         }
-        res.writeHead(200, {
-            'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream',
-            'Cache-Control': 'no-store'
+        fs.readFile(file, (err, body) => {
+            if (err) {
+                res.writeHead(404).end('Not found');
+                return;
+            }
+            res.writeHead(200, {
+                'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream',
+                'Cache-Control': 'no-store'
+            });
+            res.end(body);
         });
-        res.end(body);
     });
-});
+}
 
-server.listen(PORT, '127.0.0.1', () => {
-    console.log(`Serving ${ROOT} at http://127.0.0.1:${PORT}/`);
-});
+if (require.main === module) {
+    createServer().listen(PORT, '127.0.0.1', () => {
+        console.log(`Serving ${ROOT} at http://127.0.0.1:${PORT}/`);
+    });
+}
+
+module.exports = { createServer, ROOT };

@@ -1,6 +1,8 @@
 // Browser smoke test. Run with `npm run test:e2e` (needs `npm install` and
 // `npx playwright install chromium`). Every test fails on any console error or uncaught page error.
-const { test, expect } = require('@playwright/test');
+// Covers: add / complete / delete (with Undo) / reload, export / import, data from the original version,
+// keyboard use, and a phone-sized touch viewport.
+const { test, expect, devices } = require('@playwright/test');
 const fs = require('node:fs');
 
 // A fileDB blob exactly as written by the first version of the app, plus the old duplicate keys.
@@ -49,24 +51,26 @@ test('add, complete, delete, and reload restores', async ({ page }) => {
     // complete (pop) the top task
     await page.locator('#popButton').click();
     await expect(topTask(page)).toHaveText('second');
-    await page.locator('.completed-section .section-header').click();
+    await page.locator('.completed-section .section-toggle').click();
     await expect(page.locator('#completedTasks .completed-text')).toHaveText(['third']);
 
-    // delete the top task (confirm dialog)
-    page.once('dialog', dialog => dialog.accept());
-    await page.locator('#taskStack .top-task .remove-btn').click({ force: true });
-    await expect(topTask(page)).toHaveText('first');
-
-    // cancelling a delete asks only once
+    // delete the top task: immediate, no dialog, with an Undo toast
     let dialogs = 0;
     page.on('dialog', dialog => { dialogs++; dialog.dismiss(); });
-    await page.locator('#taskStack .top-task .remove-btn').click({ force: true });
-    expect(dialogs).toBe(1);
-    page.removeAllListeners('dialog');
+    await page.locator('#taskStack .top-task').hover();
+    await page.locator('#taskStack .top-task .remove-btn').click();
+    await expect(topTask(page)).toHaveText('first');
+    await expect(page.locator('#toast')).toContainText('Deleted "second"');
+    await page.locator('#toastAction').click();
+    await expect(topTask(page)).toHaveText('second');
+    await page.locator('#taskStack .top-task').hover();
+    await page.locator('#taskStack .top-task .remove-btn').click();
+    await expect(topTask(page)).toHaveText('first');
+    expect(dialogs).toBe(0);
 
     await page.reload();
     await expect(topTask(page)).toHaveText('first');
-    await page.locator('.completed-section .section-header').click();
+    await page.locator('.completed-section .section-toggle').click();
     await expect(page.locator('#completedTasks .completed-text')).toHaveText(['third']);
 });
 
@@ -102,10 +106,12 @@ test('export then import restores the same data', async ({ page }, testInfo) => 
     await page.evaluate(() => localStorage.clear());
     await page.reload();
     await expect(page.locator('#taskStack .task-item')).toHaveCount(0);
-    page.once('dialog', dialog => dialog.accept());
     await page.locator('#importFile').setInputFiles(file);
+    await expect(page.locator('#dialog')).toBeVisible();
+    await expect(page.locator('#dialogMessage')).toContainText('Replace your current tasks');
+    await page.locator('#dialogOk').click();
     await expect(topTask(page)).toHaveText('keep me');
-    await page.locator('.completed-section .section-header').click();
+    await page.locator('.completed-section .section-toggle').click();
     await expect(page.locator('#completedTasks .completed-text')).toHaveText(['done me']);
 
     await page.reload();
@@ -118,11 +124,9 @@ test('invalid import is rejected and leaves data untouched', async ({ page }, te
     const bad = testInfo.outputPath('bad.json');
     fs.writeFileSync(bad, JSON.stringify({ tasks: [{ text: '<img src=x onerror=alert(1)>', id: '"><img src=x>' }] }));
 
-    const messages = [];
-    page.on('dialog', dialog => { messages.push(dialog.message()); dialog.accept(); });
     await page.locator('#importFile').setInputFiles(bad);
-    await expect.poll(() => messages.length).toBe(1);
-    expect(messages[0]).toMatch(/Import failed/);
+    await expect(page.locator('#toast')).toContainText('Import failed');
+    await expect(page.locator('#dialog')).toBeHidden();
     await expect(topTask(page)).toHaveText('precious');
     await page.reload();
     await expect(topTask(page)).toHaveText('precious');
@@ -155,7 +159,7 @@ test('data written by the original version loads, with the selected tab kept', a
     await expect(topTask(page)).toHaveText('Buy milk');
     await page.locator('.tab', { hasText: 'Work' }).click();
     await expect(topTask(page)).toHaveText('Email "Bob" & <team>');
-    await page.locator('.completed-section .section-header').click();
+    await page.locator('.completed-section .section-toggle').click();
     await page.locator('.tab', { hasText: 'Personal' }).click();
     await expect(page.locator('#completedTasks .completed-text')).toHaveText(['Done thing']);
     // numeric ids survive a round trip through the new storage module
@@ -175,4 +179,181 @@ test('legacy-only keys (no fileDB) are migrated', async ({ page }) => {
     await page.reload();
     await expect(page.locator('.tab-active .tab-name')).toHaveText('Personal');
     await expect(topTask(page)).toHaveText('legacy task');
+});
+
+test('keyboard: Add button, tab arrows, move buttons, live announcements', async ({ page }) => {
+    await page.goto('/');
+    await page.locator('#taskInput').fill('first');
+    await page.locator('#addTaskBtn').click();
+    await page.locator('#taskInput').fill('second');
+    await page.locator('#addTaskBtn').click();
+    await expect(topTask(page)).toHaveText('second');
+    await expect(page.locator('#liveRegion')).toContainText('Added "second" to Work. 2 tasks in the stack.');
+
+    // reorder with the keyboard only
+    const item = text => page.locator('#taskStack .task-item', { hasText: text });
+    await item('first').locator('.move-up-btn').focus();
+    await page.keyboard.press('Enter');
+    await expect(topTask(page)).toHaveText('first');
+    await expect(page.locator('#liveRegion')).toContainText('Moved "first" up. Position 1 of 2.');
+    await expect(page.locator(':focus')).toHaveClass(/move-down-btn/); // "up" is disabled now, focus stays in the row
+
+    // the action buttons show up with keyboard focus alone (no hover)
+    await item('second').locator('.archive-btn').focus();
+    await expect(item('second').locator('.task-actions')).toHaveCSS('opacity', '1');
+    // the focus ring is drawn
+    expect(await page.evaluate(() => getComputedStyle(document.activeElement).outlineStyle)).toBe('solid');
+
+    // tabs: roles, roving tabindex, arrow keys
+    await expect(page.locator('[role=tablist] [role=tab]')).toHaveCount(2);
+    await page.locator('[role=tab][aria-selected=true]').focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(page.locator('[role=tab][aria-selected=true]')).toHaveText('Personal');
+    await expect(page.locator('[role=tab][aria-selected=true]')).toBeFocused();
+    await page.keyboard.press('ArrowRight');
+    await expect(page.locator('[role=tab][aria-selected=true]')).toHaveText('Work');
+    await page.keyboard.press('Alt+ArrowRight');
+    await expect(page.locator('.tab-name')).toHaveText(['Personal', 'Work']);
+
+    // collapsible sections are buttons and hidden content is not reachable
+    const toggle = page.locator('.archive-section .section-toggle');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.locator('#archivedTasks')).toBeHidden();
+    await toggle.focus();
+    await page.keyboard.press('Enter');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.locator('#archivedTasks')).toBeVisible();
+});
+
+test('dialogs: add, rename and delete a category (with Undo), validation inside the dialog', async ({ page }) => {
+    await page.goto('/');
+    await addTask(page, 'work thing');
+
+    await page.locator('#addCategoryBtn').click();
+    await expect(page.locator('#dialog')).toBeVisible();
+    await expect(page.locator('#dialogInput')).toBeFocused();
+    await page.locator('#dialogInput').fill('work'); // clashes case-insensitively
+    await page.locator('#dialogOk').click();
+    await expect(page.locator('#dialogError')).toContainText('already exists');
+    await expect(page.locator('#dialog')).toBeVisible();
+    await page.locator('#dialogInput').fill('Home');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#dialog')).toBeHidden();
+    await expect(page.locator('.tab-active .tab-name')).toHaveText('Home');
+
+    // Escape cancels
+    await page.locator('#renameCategoryBtn').click();
+    await expect(page.locator('#dialogInput')).toHaveValue('Home');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#dialog')).toBeHidden();
+    await expect(page.locator('.tab-active .tab-name')).toHaveText('Home');
+
+    // rename without double-click
+    await page.locator('#renameCategoryBtn').click();
+    await page.locator('#dialogInput').fill('Errands');
+    await page.locator('#dialogOk').click();
+    await expect(page.locator('.tab-active .tab-name')).toHaveText('Errands');
+
+    // delete is immediate and undoable
+    await page.locator('#deleteCategoryBtn').click();
+    await expect(page.locator('.tab-name')).toHaveText(['Work', 'Personal']);
+    await page.locator('#toastAction').click();
+    await expect(page.locator('.tab-name')).toHaveText(['Work', 'Personal', 'Errands']);
+    await page.reload();
+    await expect(page.locator('.tab-name')).toHaveText(['Work', 'Personal', 'Errands']);
+});
+
+test('mouse drag and drop still reorders tasks and categories', async ({ page }) => {
+    await page.goto('/');
+    for (const text of ['a', 'b', 'c']) await addTask(page, text);   // displayed c, b, a
+    const item = text => page.locator('#taskStack .task-item', { hasText: new RegExp('^' + text + '(?![a-z])') });
+    await item('a').dragTo(item('c'), { targetPosition: { x: 100, y: 5 } }); // upper half of the top row
+    await expect(topTask(page)).toHaveText('a');
+    await expect(page.locator('#taskStack .task-text')).toHaveText(['a', 'c', 'b']);
+
+    await page.locator('.tab', { hasText: 'Personal' }).dragTo(page.locator('.tab', { hasText: 'Work' }), { targetPosition: { x: 5, y: 10 } });
+    await expect(page.locator('.tab-name')).toHaveText(['Personal', 'Work']);
+    await page.reload();
+    await expect(page.locator('.tab-name')).toHaveText(['Personal', 'Work']);
+    await page.locator('.tab', { hasText: 'Work' }).click();
+    await expect(page.locator('#taskStack .task-text')).toHaveText(['a', 'c', 'b']);
+});
+
+test('the app works when Google Fonts cannot be loaded', async ({ page }) => {
+    await page.route(/fonts\.(googleapis|gstatic)\.com/, route => route.abort());
+    const started = Date.now();
+    await page.goto('/', { waitUntil: 'load' });
+    expect(Date.now() - started).toBeLessThan(5000);
+    await addTask(page, 'offline task');
+    await expect(topTask(page)).toHaveText('offline task');
+    const family = await page.evaluate(() => getComputedStyle(document.body).fontFamily);
+    expect(family).toContain('system-ui');
+    // the browser reports the blocked CDN requests as console errors; they are expected here
+    problems = problems.filter(p => !/ERR_FAILED|fonts\.(googleapis|gstatic)/.test(p));
+});
+
+test('reduced motion turns transitions and animations off', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto('/');
+    await addTask(page, 'calm');
+    const duration = await page.evaluate(() => getComputedStyle(document.querySelector('#popButton')).transitionDuration);
+    expect(parseFloat(duration)).toBeLessThan(0.001);
+});
+
+test.describe('phone-sized touch viewport', () => {
+    const { defaultBrowserType, ...phone } = devices['Pixel 7'];
+    test.use(phone);
+
+    test('layout, touch targets and the full add / complete / undo flow', async ({ page }) => {
+        await page.goto('/');
+        expect(await page.evaluate(() => matchMedia('(hover: none) and (pointer: coarse)').matches)).toBe(true);
+
+        await page.locator('#taskInput').fill('call the bank');
+        await page.locator('#addTaskBtn').tap();
+        await addTask(page, 'pick up the parcel');
+        await expect(topTask(page)).toHaveText('pick up the parcel');
+
+        // the page itself scrolls and nothing overflows sideways
+        const metrics = await page.evaluate(() => ({
+            scrollWidth: document.documentElement.scrollWidth,
+            innerWidth: window.innerWidth,
+            height: document.querySelector('.app').getBoundingClientRect().height,
+            viewport: window.innerHeight,
+            inputFont: parseFloat(getComputedStyle(document.querySelector('#taskInput')).fontSize)
+        }));
+        expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.innerWidth);
+        expect(metrics.height).toBeGreaterThanOrEqual(metrics.viewport);
+        expect(metrics.inputFont).toBeGreaterThanOrEqual(16); // avoids the iOS focus zoom
+
+        // row actions are visible without hovering, and every control is at least 44px
+        await expect(page.locator('#taskStack .top-task .task-actions')).toHaveCSS('opacity', '1');
+        const selectors = ['#addTaskBtn', '#popButton', '#taskInput', '#addCategoryBtn', '#renameCategoryBtn',
+            '#deleteCategoryBtn', '.tab-button', '.section-toggle', '#exportBtn', '#importBtn',
+            '#taskStack .task-item:nth-child(2) .task-action-btn'];
+        for (const selector of selectors) {
+            const handles = await page.locator(selector).elementHandles();
+            expect(handles.length, selector + ' exists').toBeGreaterThan(0);
+            for (const handle of handles) {
+                const box = await handle.boundingBox();
+                expect(box.width, selector + ' width').toBeGreaterThanOrEqual(43.5);
+                expect(box.height, selector + ' height').toBeGreaterThanOrEqual(43.5);
+            }
+        }
+
+        // complete with a tap, then undo from the toast
+        await page.locator('#popButton').tap();
+        await expect(topTask(page)).toHaveText('call the bank');
+        await page.locator('#toastAction').tap();
+        await expect(topTask(page)).toHaveText('pick up the parcel');
+
+        // reorder with the buttons (drag and drop does not exist on touch)
+        await page.locator('#taskStack .task-item', { hasText: 'call the bank' }).locator('.move-up-btn').tap();
+        await expect(topTask(page)).toHaveText('call the bank');
+
+        // the toast does not cover the Export / Import buttons
+        await page.locator('#popButton').tap();
+        const toast = await page.locator('#toast').boundingBox();
+        const footer = await page.locator('#exportBtn').boundingBox();
+        expect(toast.y + toast.height).toBeLessThanOrEqual(footer.y + 1);
+    });
 });

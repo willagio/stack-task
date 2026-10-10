@@ -37,6 +37,7 @@ class FakeElement {
         this.value = '';
         this.disabled = false;
         this.files = [];
+        this.hidden = false;
     }
     get className() { return this._className; }
     set className(v) { this._className = String(v); }
@@ -100,6 +101,8 @@ class FakeElement {
     addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); }
     getBoundingClientRect() { return { top: 0, left: 0, width: 100, height: 40 }; }
     click() { this.dispatch('click'); }
+    focus() { this.ownerDocument.activeElement = this; }
+    select() {}
     // Bubbling dispatch. `props` become event fields.
     dispatch(type, props) {
         const event = { type, target: this, bubbles: true, defaultPrevented: false,
@@ -116,6 +119,8 @@ class FakeElement {
 class FakeDocument {
     constructor() {
         this.readyState = 'complete';
+        this.activeElement = null;
+        this.listeners = {};
         this.body = new FakeElement('body', this);
     }
     createElement(tag) { return new FakeElement(tag, this); }
@@ -134,7 +139,12 @@ class FakeDocument {
     }
     querySelector(sel) { return this.body.querySelector(sel); }
     querySelectorAll(sel) { return this.body.querySelectorAll(sel); }
-    addEventListener() {}
+    addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); }
+    dispatch(type, props) {
+        const event = { type, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, ...props };
+        (this.listeners[type] || []).forEach(fn => fn(event));
+        return event;
+    }
 }
 
 // Builds the static page skeleton the app expects (ids/classes from index.html).
@@ -148,20 +158,33 @@ function buildPage(doc) {
     };
     const body = doc.body;
     const count = add(body, 'span', {}, 'stack-count');
+    add(body, 'span', {}, 'stack-label');
     add(body, 'div', { id: 'tabsList' }, 'tabs-list');
     add(body, 'button', { id: 'addCategoryBtn' });
+    add(body, 'button', { id: 'renameCategoryBtn' });
+    add(body, 'button', { id: 'deleteCategoryBtn' });
     add(body, 'input', { id: 'taskInput' });
+    add(body, 'button', { id: 'addTaskBtn' });
     add(body, 'button', { id: 'popButton' });
-    add(body, 'div', { id: 'taskStack' });
-    const archive = add(body, 'div', {}, 'archive-section collapsible-section collapsed');
-    add(archive, 'div', {}, 'section-header clickable');
-    add(archive, 'div', { id: 'archivedTasks' });
-    const completed = add(body, 'div', {}, 'completed-section collapsible-section collapsed');
-    add(completed, 'div', {}, 'section-header clickable');
-    add(completed, 'div', { id: 'completedTasks' });
+    const panel = add(body, 'div', { id: 'taskPanel' });
+    add(panel, 'div', { id: 'taskStack' });
+    const section = (cls, countId, listId) => {
+        const el = add(body, 'div', {}, cls + ' collapsible-section collapsed');
+        const toggle = add(add(el, 'div', {}, 'section-header'), 'button', { 'aria-expanded': 'false' }, 'section-toggle');
+        add(toggle, 'span', { id: countId }, 'section-count');
+        add(el, 'div', { id: listId });
+    };
+    section('archive-section', 'archivedCount', 'archivedTasks');
+    section('completed-section', 'completedCount', 'completedTasks');
     add(body, 'button', { id: 'exportBtn' });
     add(body, 'button', { id: 'importBtn' });
     add(body, 'input', { id: 'importFile' });
+    add(body, 'div', { id: 'liveRegion' });
+    const toast = add(body, 'div', { id: 'toast' });
+    toast.hidden = true;
+    add(toast, 'span', { id: 'toastMessage' });
+    add(toast, 'button', { id: 'toastAction' });
+    add(toast, 'button', { id: 'toastClose' });
     return count;
 }
 

@@ -160,3 +160,46 @@ test('formatTime handles missing and invalid timestamps', () => {
     assert.equal(State.formatTime('2024-05-30T12:00:00Z', now), '2d ago');
     assert.equal(State.formatTime(now - 5 * 60000, now), '5m ago');
 });
+
+test('moveTask swaps with the neighbour in the same category only', () => {
+    const s = State.createState();
+    State.push(s, 'w1');
+    State.switchCategory(s, 'Personal'); State.push(s, 'p1');
+    State.switchCategory(s, 'Work'); State.push(s, 'w2'); State.push(s, 'w3');
+    const id = text => s.tasks.find(t => t.text === text).id;
+    assert.equal(State.moveTask(s, id('w3'), 'up').ok, false, 'already on top');
+    assert.equal(State.moveTask(s, id('w1'), 'down').ok, false, 'already at the bottom');
+    assert.equal(State.moveTask(s, id('w2'), 'up').ok, true);
+    assert.deepEqual(texts(State.inCategory(s.tasks, 'Work')), ['w1', 'w3', 'w2']);
+    assert.equal(State.moveTask(s, id('w1'), 'up').ok, true, 'skips the Personal task in between');
+    assert.deepEqual(texts(State.inCategory(s.tasks, 'Work')), ['w3', 'w1', 'w2']);
+    assert.deepEqual(texts(State.inCategory(s.tasks, 'Personal')), ['p1']);
+    assert.equal(State.moveTask(s, 'nope', 'up').ok, false);
+});
+
+test('positionFromTop counts from the top of the task\'s own category', () => {
+    const s = State.createState();
+    State.push(s, 'a'); State.push(s, 'b'); State.push(s, 'c');
+    const id = text => s.tasks.find(t => t.text === text).id;
+    assert.equal(State.positionFromTop(s, id('c')), 1);
+    assert.equal(State.positionFromTop(s, id('a')), 3);
+    assert.equal(State.positionFromTop(s, 'nope'), 0);
+});
+
+test('clone is a deep, independent snapshot', () => {
+    const s = State.createState();
+    State.push(s, 'a');
+    State.switchCategory(s, 'Personal');
+    const snapshot = State.clone(s);
+    State.pop(s); s.tasks[0].text = 'changed'; s.categories.push('X');
+    assert.equal(snapshot.tasks[0].text, 'a');
+    assert.deepEqual(snapshot.categories, ['Work', 'Personal']);
+    assert.equal(snapshot.currentCategory, 'Personal');
+});
+
+test('validateCategoryName is exposed and ignores the category being renamed', () => {
+    const s = State.createState();
+    assert.equal(State.validateCategoryName(s, 'work', null).ok, false);
+    assert.equal(State.validateCategoryName(s, 'work', 'Work').ok, true);
+    assert.equal(State.validateCategoryName(s, '  ', null).ok, false);
+});

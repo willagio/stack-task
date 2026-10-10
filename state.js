@@ -52,6 +52,11 @@
         };
     }
 
+    // Deep copy of the persisted shape; used as an undo snapshot.
+    function clone(state) {
+        return createState(JSON.parse(JSON.stringify(state)));
+    }
+
     // ---- Queries -------------------------------------------------------
 
     function inCategory(list, category) {
@@ -161,6 +166,29 @@
         return { ok: true };
     }
 
+    // Swaps a task with its neighbour in the same category. 'up' moves it toward the top of the stack.
+    function moveTask(state, id, direction) {
+        const index = indexOfId(state.tasks, id);
+        if (index === -1) return { ok: false };
+        const category = state.tasks[index].category;
+        const step = direction === 'up' ? 1 : -1;
+        for (let i = index + step; i >= 0 && i < state.tasks.length; i += step) {
+            if (state.tasks[i].category === category) {
+                [state.tasks[index], state.tasks[i]] = [state.tasks[i], state.tasks[index]];
+                return { ok: true };
+            }
+        }
+        return { ok: false };
+    }
+
+    // 1-based position of a task counted from the top of its category's stack, or 0.
+    function positionFromTop(state, id) {
+        const index = indexOfId(state.tasks, id);
+        if (index === -1) return 0;
+        const visible = inCategory(state.tasks, state.tasks[index].category);
+        return visible.length - visible.findIndex(task => sameId(task.id, id));
+    }
+
     // ---- Category operations -------------------------------------------
 
     function validateCategoryName(state, name, ignoring) {
@@ -257,6 +285,7 @@
         newId,
         sameId,
         createState,
+        clone,
         inCategory,
         topTaskIndex,
         countInCategory,
@@ -269,6 +298,9 @@
         restoreCompleted,
         deleteCompleted,
         reorderTasks,
+        moveTask,
+        positionFromTop,
+        validateCategoryName,
         createCategory,
         renameCategory,
         deleteCategory,

@@ -29,8 +29,20 @@
         ] },
         restore: { size: 14, shapes: [
             ['path', { d: 'M7 3.5V10.5M7 3.5L4.5 6M7 3.5L9.5 6', stroke: 'currentColor', 'stroke-width': 1.5, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }]
+        ] },
+        up: { size: 14, shapes: [
+            ['path', { d: 'M3.5 8.5L7 5L10.5 8.5', stroke: 'currentColor', 'stroke-width': 1.6, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }]
+        ] },
+        down: { size: 14, shapes: [
+            ['path', { d: 'M3.5 5.5L7 9L10.5 5.5', stroke: 'currentColor', 'stroke-width': 1.6, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }]
         ] }
     };
+
+    // Task text inside accessible names: short, and never empty
+    function shorten(text) {
+        const flat = String(text).replace(/\s+/g, ' ').trim();
+        return flat.length > 40 ? flat.slice(0, 39) + '…' : flat;
+    }
 
     function create(doc, refs) {
         // el('div', { class, text, attrs, data }, children)
@@ -53,6 +65,7 @@
             svg.setAttribute('viewBox', `0 0 ${def.size} ${def.size}`);
             svg.setAttribute('fill', 'none');
             svg.setAttribute('aria-hidden', 'true');
+            svg.setAttribute('focusable', 'false');
             def.shapes.forEach(([tag, attrs]) => {
                 const shape = doc.createElementNS(SVG_NS, tag);
                 Object.keys(attrs).forEach(key => shape.setAttribute(key, attrs[key]));
@@ -61,12 +74,12 @@
             return svg;
         }
 
-        function iconButton(className, iconName, label, data) {
-            return el('button', {
-                class: className,
-                attrs: { type: 'button', title: label, 'aria-label': label },
-                data
-            }, [icon(iconName)]);
+        function iconButton(className, iconName, label, data, disabled) {
+            const attrs = { type: 'button', title: label, 'aria-label': label };
+            if (disabled) attrs.disabled = '';
+            const button = el('button', { class: className, attrs, data }, [icon(iconName)]);
+            if (disabled) button.disabled = true;
+            return button;
         }
 
         function emptyState(...lines) {
@@ -79,23 +92,32 @@
         }
 
         function renderTabs(state) {
-            const tabs = state.categories.map(category => {
+            const tabs = state.categories.map((category, index) => {
                 const active = category === state.currentCategory;
                 return el('div', {
                     class: active ? 'tab tab-active' : 'tab',
-                    attrs: { draggable: 'true' },
+                    attrs: { draggable: 'true', role: 'presentation' },
                     data: { category }
                 }, [
-                    el('span', { class: 'tab-name', text: category }),
                     el('button', {
-                        class: 'tab-close',
-                        text: '×',
-                        attrs: { type: 'button', title: 'Delete category', 'aria-label': `Delete category ${category}` },
+                        class: 'tab-button',
+                        attrs: {
+                            type: 'button',
+                            role: 'tab',
+                            id: `tab-${index}`,
+                            'aria-selected': active ? 'true' : 'false',
+                            'aria-controls': 'taskPanel',
+                            tabindex: active ? '0' : '-1'
+                        },
                         data: { category }
-                    })
+                    }, [el('span', { class: 'tab-name', text: category })])
                 ]);
             });
             refs.tabsList.replaceChildren(...tabs);
+            if (refs.taskPanel) {
+                const activeIndex = state.categories.indexOf(state.currentCategory);
+                refs.taskPanel.setAttribute('aria-labelledby', `tab-${activeIndex}`);
+            }
         }
 
         function renderStack(state) {
@@ -107,17 +129,21 @@
             // Top of the stack first
             const items = visible.map((task, index) => {
                 const isTop = index === visible.length - 1;
+                const name = shorten(task.text);
+                const data = id => ({ id: task.id, action: id });
                 return el('div', {
                     class: isTop ? 'task-item top-task' : 'task-item',
-                    attrs: { draggable: 'true' },
+                    attrs: { draggable: 'true', role: 'listitem' },
                     data: { id: task.id }
                 }, [
-                    el('div', { class: 'drag-handle' }, [icon('grip')]),
-                    el('div', { class: 'task-index', text: `#${visible.length - index}` }),
-                    el('div', { class: 'task-text', text: task.text }),
+                    el('div', { class: 'drag-handle', attrs: { 'aria-hidden': 'true' } }, [icon('grip')]),
+                    el('div', { class: 'task-text', text: task.text, attrs: { title: task.text } }),
+                    el('div', { class: 'task-index', text: isTop ? 'TOP' : `#${visible.length - index}` }),
                     el('div', { class: 'task-actions' }, [
-                        iconButton('task-action-btn archive-btn', 'archive', 'Archive task', { action: 'archive', id: task.id }),
-                        iconButton('task-action-btn remove-btn', 'close', 'Remove task', { action: 'remove', id: task.id })
+                        iconButton('task-action-btn move-up-btn', 'up', `Move "${name}" up`, data('up'), isTop),
+                        iconButton('task-action-btn move-down-btn', 'down', `Move "${name}" down`, data('down'), index === 0),
+                        iconButton('task-action-btn archive-btn', 'archive', `Archive "${name}"`, data('archive')),
+                        iconButton('task-action-btn remove-btn', 'close', `Delete "${name}"`, data('remove'))
                     ])
                 ]);
             }).reverse();
@@ -129,23 +155,29 @@
                 container.replaceChildren(emptyState(spec.empty));
                 return;
             }
-            container.replaceChildren(...tasks.map(task => el('div', {
-                class: spec.itemClass,
-                data: { id: task.id }
-            }, [
-                el('div', { class: spec.contentClass }, [
-                    el('div', { class: spec.textClass, text: task.text }),
-                    el('div', { class: spec.timeClass, text: State.formatTime(task[spec.timeField]) })
-                ]),
-                el('div', { class: spec.actionsClass }, [
-                    iconButton(spec.restoreClass, 'restore', 'Restore to stack', { id: task.id }),
-                    iconButton(spec.deleteClass, 'close', 'Permanently delete', { id: task.id })
-                ])
-            ])));
+            container.replaceChildren(...tasks.map(task => {
+                const name = shorten(task.text);
+                return el('div', {
+                    class: `history-item ${spec.itemClass}`,
+                    attrs: { role: 'listitem' },
+                    data: { id: task.id }
+                }, [
+                    el('div', { class: `history-content ${spec.contentClass}` }, [
+                        el('div', { class: `history-text ${spec.textClass}`, text: task.text }),
+                        el('div', { class: `history-time ${spec.timeClass}`, text: State.formatTime(task[spec.timeField]) })
+                    ]),
+                    el('div', { class: `history-actions ${spec.actionsClass}` }, [
+                        iconButton(`history-btn ${spec.restoreClass}`, 'restore', `Restore "${name}" to the stack`, { id: task.id }),
+                        iconButton(`history-btn history-delete ${spec.deleteClass}`, 'close', `Delete "${name}" permanently`, { id: task.id })
+                    ])
+                ]);
+            }));
         }
 
         function renderArchived(state) {
-            renderHistory(refs.archivedTasks, State.inCategory(state.archived, state.currentCategory), {
+            const tasks = State.inCategory(state.archived, state.currentCategory);
+            if (refs.archivedCount) refs.archivedCount.textContent = String(tasks.length);
+            renderHistory(refs.archivedTasks, tasks, {
                 empty: 'No archived tasks',
                 itemClass: 'archived-item',
                 contentClass: 'archived-content',
@@ -159,7 +191,9 @@
         }
 
         function renderCompleted(state) {
-            renderHistory(refs.completedTasks, State.inCategory(state.completed, state.currentCategory), {
+            const tasks = State.inCategory(state.completed, state.currentCategory);
+            if (refs.completedCount) refs.completedCount.textContent = String(tasks.length);
+            renderHistory(refs.completedTasks, tasks, {
                 empty: 'No completed tasks yet',
                 itemClass: 'completed-item',
                 contentClass: 'completed-content',
@@ -175,7 +209,10 @@
         function updateControls(state) {
             const count = State.inCategory(state.tasks, state.currentCategory).length;
             refs.stackCount.textContent = String(count);
+            if (refs.stackLabel) refs.stackLabel.textContent = count === 1 ? 'task' : 'tasks';
             refs.popButton.disabled = count === 0;
+            if (refs.renameCategoryBtn) refs.renameCategoryBtn.disabled = false;
+            if (refs.deleteCategoryBtn) refs.deleteCategoryBtn.disabled = state.categories.length <= 1;
         }
 
         function renderAll(state) {
