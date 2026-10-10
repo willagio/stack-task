@@ -3,101 +3,160 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark">
     <title>Stack Task Organizer</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="tabs.css">
+    <!-- Inter is optional: the page does not wait for it, and falls back to the system font if it fails to load -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"></noscript>
 </head>
 <body>
     <div class="container">
-        <div class="app">
+        <main class="app">
             <header class="header">
                 <h1 class="title">Task Stack</h1>
-                <div class="stack-indicator">
+                <p class="stack-indicator">
                     <span class="stack-count">0</span>
                     <span class="stack-label">tasks</span>
-                </div>
+                </p>
             </header>
 
             <div class="tabs-container">
                 <div class="tabs-scroll">
-                    <div id="tabsList" class="tabs-list"></div>
+                    <div id="tabsList" class="tabs-list" role="tablist" aria-label="Categories"></div>
                 </div>
-                <button id="addCategoryBtn" class="add-category-btn" title="Add new category">
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                        <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                    </svg>
-                </button>
+                <div class="category-tools">
+                    <button id="renameCategoryBtn" class="category-btn" type="button" title="Rename this category" aria-label="Rename this category">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
+                            <path d="M10.5 3L13 5.5M2.5 13.5L3 10.5L11 2.5L13.5 5L5.5 13L2.5 13.5Z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                    <button id="deleteCategoryBtn" class="category-btn category-btn-danger" type="button" title="Delete this category" aria-label="Delete this category">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
+                            <path d="M2.5 4H13.5M6 4V2.5H10V4M4 4L4.7 13.5H11.3L12 4M6.5 6.5V11M9.5 6.5V11" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                    <button id="addCategoryBtn" class="category-btn" type="button" title="Add new category" aria-label="Add new category">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
+                            <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                    </button>
+                </div>
             </div>
 
             <div class="input-section">
-                <input 
-                    type="text" 
-                    id="taskInput" 
-                    class="task-input" 
-                    placeholder="Enter a task and press Enter..."
-                    autocomplete="off"
-                >
-                <button id="popButton" class="pop-button" disabled>
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                        <path d="M10 4V16M10 4L6 8M10 4L14 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <label for="taskInput" class="visually-hidden">New task</label>
+                <div class="input-row">
+                    <input
+                        type="text"
+                        id="taskInput"
+                        class="task-input"
+                        placeholder="Add a task to the top of the stack"
+                        autocomplete="off"
+                        enterkeyhint="done"
+                        maxlength="280"
+                    >
+                    <button id="addTaskBtn" class="add-button" type="button">Add</button>
+                </div>
+                <button id="popButton" class="pop-button" type="button" disabled>
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false">
+                        <path d="M4 10.5L8 14.5L16 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
-                    Pop Task
+                    Complete top task
                 </button>
             </div>
 
-            <div class="tasks-section">
+            <section id="taskPanel" class="tasks-section" role="tabpanel" aria-labelledby="tab-0">
                 <div class="section-header">
                     <h2>Active Stack</h2>
                 </div>
-                <div id="taskStack" class="task-stack"></div>
-            </div>
+                <div id="taskStack" class="task-stack" role="list"></div>
+            </section>
 
-            <div class="archive-section collapsible-section collapsed">
-                <div class="section-header clickable">
+            <section class="archive-section collapsible-section collapsed">
+                <div class="section-header">
                     <h2>
-                        <svg class="toggle-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
-                            <path d="M6 8L10 12L14 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                        Archive
+                        <button type="button" class="section-toggle" aria-expanded="false" aria-controls="archivedTasks">
+                            <svg class="toggle-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false">
+                                <path d="M6 8L10 12L14 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            <span class="section-title">Archive</span>
+                            <span id="archivedCount" class="section-count">0</span>
+                        </button>
                     </h2>
                 </div>
-                <div id="archivedTasks" class="archived-tasks section-content"></div>
-            </div>
+                <div id="archivedTasks" class="archived-tasks section-content" role="list"></div>
+            </section>
 
-            <div class="completed-section collapsible-section collapsed">
-                <div class="section-header clickable">
+            <section class="completed-section collapsible-section collapsed">
+                <div class="section-header">
                     <h2>
-                        <svg class="toggle-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
-                            <path d="M6 8L10 12L14 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                        Completed
+                        <button type="button" class="section-toggle" aria-expanded="false" aria-controls="completedTasks">
+                            <svg class="toggle-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false">
+                                <path d="M6 8L10 12L14 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            <span class="section-title">Completed</span>
+                            <span id="completedCount" class="section-count">0</span>
+                        </button>
                     </h2>
                 </div>
-                <div id="completedTasks" class="completed-tasks section-content"></div>
-            </div>
+                <div id="completedTasks" class="completed-tasks section-content" role="list"></div>
+            </section>
 
             <div class="footer-actions">
-                <button id="exportBtn" class="footer-btn" title="Export tasks to JSON file">
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <button id="exportBtn" class="footer-btn" type="button" title="Export tasks to JSON file">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
                         <path d="M8 2V10M8 10L5 7M8 10L11 7M2 12V13C2 13.5523 2.44772 14 3 14H13C13.5523 14 14 13.5523 14 13V12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
                     Export
                 </button>
-                <button id="importBtn" class="footer-btn" title="Import tasks from JSON file">
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <button id="importBtn" class="footer-btn" type="button" title="Import tasks from JSON file">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
                         <path d="M8 10V2M8 2L5 5M8 2L11 5M2 12V13C2 13.5523 2.44772 14 3 14H13C13.5523 14 14 13.5523 14 13V12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
                     Import
                 </button>
-                <input type="file" id="importFile" accept=".json" style="display: none;">
+                <input type="file" id="importFile" accept=".json,application/json" hidden>
             </div>
-        </div>
+        </main>
     </div>
 
-    <script src="file-db.js"></script>
-    <script src="script.js"></script>
+    <div id="liveRegion" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+
+    <div id="toast" class="toast" hidden>
+        <span id="toastMessage" class="toast-message"></span>
+        <button id="toastAction" class="toast-btn toast-action" type="button">Undo</button>
+        <button id="toastClose" class="toast-btn toast-close" type="button" aria-label="Dismiss message" title="Dismiss">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" focusable="false">
+                <path d="M10.5 3.5L3.5 10.5M3.5 3.5L10.5 10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+        </button>
+    </div>
+
+    <dialog id="dialog" class="dialog" aria-labelledby="dialogTitle">
+        <form id="dialogForm" class="dialog-form" method="dialog">
+            <h2 id="dialogTitle" class="dialog-title"></h2>
+            <p id="dialogMessage" class="dialog-message" hidden></p>
+            <div id="dialogField" class="dialog-field" hidden>
+                <label id="dialogLabel" for="dialogInput"></label>
+                <input id="dialogInput" class="task-input" type="text" autocomplete="off">
+                <p id="dialogError" class="dialog-error" role="alert"></p>
+            </div>
+            <div class="dialog-actions">
+                <button id="dialogCancel" class="dialog-btn" type="button">Cancel</button>
+                <button id="dialogOk" class="dialog-btn dialog-btn-primary" type="submit">OK</button>
+            </div>
+        </form>
+    </dialog>
+
+    <script src="state.js"></script>
+    <script src="storage.js"></script>
+    <script src="ui.js"></script>
+    <script src="render.js"></script>
+    <script src="dnd.js"></script>
+    <script src="app.js"></script>
 </body>
 </html>

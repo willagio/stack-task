@@ -1,0 +1,16 @@
+{
+  "name": "stack-task",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Stack Task Organizer - a static, build-free task stack. Dev tooling only; the app itself has no dependencies.",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test \"tests/unit/*.test.js\"",
+    "test:e2e": "playwright test",
+    "serve": "node tests/e2e/static-server.js",
+    "screenshots": "node scripts/screenshots.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}

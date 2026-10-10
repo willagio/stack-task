@@ -1,0 +1,55 @@
+{
+  "_note": "fileDB string was written by FileDB.saveToStorage() from `git show d9a4f00:file-db.js`; legacy keys as written by the old script.js saveToStorage()",
+  "fileDB": "{\"tasks\":[{\"text\":\"Write report\",\"id\":1700000000001,\"createdAt\":\"2024-01-05T10:00:00.000Z\",\"category\":\"Work\"},{\"text\":\"Buy milk\",\"id\":1700000000002,\"createdAt\":\"2024-01-05T10:05:00.000Z\",\"category\":\"Personal\"},{\"text\":\"Email \\\"Bob\\\" & <team>\",\"id\":1700000000003,\"createdAt\":\"2024-01-05T10:06:00.000Z\",\"category\":\"Work\"}],\"completed\":[{\"text\":\"Done thing\",\"id\":1700000000004,\"createdAt\":\"2024-01-04T09:00:00.000Z\",\"category\":\"Personal\",\"completedAt\":\"2024-01-04T12:00:00.000Z\"}],\"archived\":[{\"text\":\"Maybe later\",\"id\":1700000000005,\"createdAt\":\"2024-01-03T09:00:00.000Z\",\"category\":\"Work\",\"archivedAt\":\"2024-01-03T12:00:00.000Z\"}],\"categories\":[\"Work\",\"Personal\"]}",
+  "legacy": {
+    "taskStack": "[{\"text\":\"Write report\",\"id\":1700000000001,\"createdAt\":\"2024-01-05T10:00:00.000Z\",\"category\":\"Work\"},{\"text\":\"Buy milk\",\"id\":1700000000002,\"createdAt\":\"2024-01-05T10:05:00.000Z\",\"category\":\"Personal\"},{\"text\":\"Email \\\"Bob\\\" & <team>\",\"id\":1700000000003,\"createdAt\":\"2024-01-05T10:06:00.000Z\",\"category\":\"Work\"}]",
+    "completedTasks": "[{\"text\":\"Done thing\",\"id\":1700000000004,\"createdAt\":\"2024-01-04T09:00:00.000Z\",\"category\":\"Personal\",\"completedAt\":\"2024-01-04T12:00:00.000Z\"}]",
+    "archivedTasks": "[{\"text\":\"Maybe later\",\"id\":1700000000005,\"createdAt\":\"2024-01-03T09:00:00.000Z\",\"category\":\"Work\",\"archivedAt\":\"2024-01-03T12:00:00.000Z\"}]",
+    "categories": "[\"Work\",\"Personal\"]",
+    "currentCategory": "Personal"
+  },
+  "expected": {
+    "tasks": [
+      {
+        "text": "Write report",
+        "id": 1700000000001,
+        "createdAt": "2024-01-05T10:00:00.000Z",
+        "category": "Work"
+      },
+      {
+        "text": "Buy milk",
+        "id": 1700000000002,
+        "createdAt": "2024-01-05T10:05:00.000Z",
+        "category": "Personal"
+      },
+      {
+        "text": "Email \"Bob\" & <team>",
+        "id": 1700000000003,
+        "createdAt": "2024-01-05T10:06:00.000Z",
+        "category": "Work"
+      }
+    ],
+    "completed": [
+      {
+        "text": "Done thing",
+        "id": 1700000000004,
+        "createdAt": "2024-01-04T09:00:00.000Z",
+        "category": "Personal",
+        "completedAt": "2024-01-04T12:00:00.000Z"
+      }
+    ],
+    "archived": [
+      {
+        "text": "Maybe later",
+        "id": 1700000000005,
+        "createdAt": "2024-01-03T09:00:00.000Z",
+        "category": "Work",
+        "archivedAt": "2024-01-03T12:00:00.000Z"
+      }
+    ],
+    "categories": [
+      "Work",
+      "Personal"
+    ]
+  }
+}
