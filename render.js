@@ -36,11 +36,9 @@
         down: { size: 14, shapes: [
             ['path', { d: 'M3.5 5.5L7 9L10.5 5.5', stroke: 'currentColor', 'stroke-width': 1.6, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }]
         ] },
-        play: { size: 14, shapes: [
-            ['path', { d: 'M4.5 3L11 7L4.5 11Z', fill: 'currentColor', stroke: 'currentColor', 'stroke-width': 1.2, 'stroke-linejoin': 'round' }]
-        ] },
-        pause: { size: 14, shapes: [
-            ['path', { d: 'M4.5 3V11M9.5 3V11', stroke: 'currentColor', 'stroke-width': 2, 'stroke-linecap': 'round' }]
+        tomato: { size: 18, shapes: [
+            ['circle', { cx: 9, cy: 10.5, r: 6.5, fill: '#E0442B' }],
+            ['path', { d: 'M9 5.5C7.5 2.5 4.5 3 3.5 4.5C5 6.5 7.5 6.5 9 5.5ZM9 5.5C10.5 2.5 13.5 3 14.5 4.5C13 6.5 10.5 6.5 9 5.5Z', fill: '#1F6B38' }]
         ] }
     };
 
@@ -50,10 +48,33 @@
         return flat.length > 40 ? flat.slice(0, 39) + '…' : flat;
     }
 
-    function create(doc, refs) {
-        // The Done button lives in the input section until a task exists; then it moves into the top card
-        const popHome = refs.popButton ? refs.popButton.parentNode : null;
+    const FIVE_MINUTES = 5 * 60 * 1000;
+    const TALLY_MAX = 4;
+    // Circumference of the wedge circle in index.html (r = 22): the visible part of its stroke is the time left
+    const WEDGE = 2 * Math.PI * 22;
 
+    // What the hero says about the top task, from its timer alone
+    function statusOf(task, now) {
+        if (State.isRunning(task)) {
+            return State.remainingMs(task, now) <= FIVE_MINUTES
+                ? { key: 'almost', text: 'Almost ripe.' }
+                : { key: 'running', text: 'Ripening…' };
+        }
+        if (State.isRipe(task)) return { key: 'ripe', text: 'Ripe! Take five, then Done — or one more?' };
+        if (State.elapsedMs(task, now) > 0) return { key: 'half', text: 'Half-ripe. Keep going?' };
+        return { key: 'fresh', text: 'Fresh tomato. Start?' };
+    }
+
+    function sameDay(value, now) {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return false;
+        const today = new Date(now);
+        return date.getFullYear() === today.getFullYear()
+            && date.getMonth() === today.getMonth()
+            && date.getDate() === today.getDate();
+    }
+
+    function create(doc, refs) {
         // el('div', { class, text, attrs, data }, children)
         function el(tag, options, children) {
             const node = doc.createElement(tag);
@@ -147,7 +168,7 @@
             const before = new Map();
             stackItems(container).forEach(node => {
                 if (typeof node.getBoundingClientRect !== 'function') return;
-                before.set(node.dataset.id, { rect: node.getBoundingClientRect(), top: node.classList.contains('top-task') });
+                before.set(node.dataset.id, node.getBoundingClientRect());
             });
             return before;
         }
@@ -164,135 +185,164 @@
                     );
                     return;
                 }
-                const isTop = node.classList.contains('top-task');
-                if (isTop && !prev.top) node.classList.add('became-top');
                 const next = node.getBoundingClientRect();
-                const dy = prev.rect.top - next.top;
-                const dh = prev.rect.height - next.height;
+                const dy = prev.top - next.top;
+                const dh = prev.height - next.height;
                 if (Math.abs(dy) < 1 && Math.abs(dh) < 1) return;
                 const from = { transform: `translateY(${dy}px)` };
                 const to = { transform: 'none' };
                 if (Math.abs(dh) >= 1) {
-                    from.height = from.minHeight = `${prev.rect.height}px`;
+                    from.height = from.minHeight = `${prev.height}px`;
                     to.height = to.minHeight = `${next.height}px`;
                 }
                 node.animate([from, to], { duration: 340, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' });
             });
         }
 
-        // "0:42" while a timer runs or once time was logged; nothing for an untouched task
-        function timeLabel(task, now) {
-            const running = State.isRunning(task);
-            const elapsed = State.elapsedMs(task, now);
-            if (!running && elapsed <= 0) return null;
-            return el('span', {
-                class: running ? 'task-time running' : 'task-time',
-                text: State.formatClock(elapsed),
-                attrs: { title: running ? 'Timer running' : 'Time spent' },
-                data: { timeFor: task.id }
-            });
+        // ---- Hero: the one task to do now ---------------------------------
+
+        let heroId = null;
+
+        function tomatoTally(count) {
+            const shown = count > TALLY_MAX ? 1 : count;
+            const nodes = [];
+            for (let i = 0; i < shown; i++) nodes.push(icon('tomato'));
+            if (count > TALLY_MAX) nodes.push(el('span', { class: 'tally-count', text: `×${count}` }));
+            return nodes;
         }
 
-        function renderStack(state) {
+        // Clock, wedge, tilt and status: everything that changes while a timer runs. Cheap enough for every tick.
+        function paintDial(state, now) {
+            const index = State.topTaskIndex(state);
+            if (index === -1) return;
+            const task = state.tasks[index];
+            const at = now === undefined ? Date.now() : now;
+            const remaining = State.remainingMs(task, at);
+            const status = statusOf(task, at);
+            refs.heroClock.textContent = State.formatRemaining(remaining);
+            const minutes = Math.ceil(remaining / 60000);
+            const label = `${minutes} ${minutes === 1 ? 'minute' : 'minutes'} left`;
+            if (refs.heroClock.getAttribute('aria-label') !== label) refs.heroClock.setAttribute('aria-label', label);
+            // The wedge is set as an attribute: no transition, one step per second
+            const visible = Math.max(0, Math.min(1, remaining / State.POMODORO_MS)) * WEDGE;
+            refs.dialArc.setAttribute('stroke-dasharray', `${visible.toFixed(2)} ${WEDGE.toFixed(2)}`);
+            refs.dial.classList.toggle('tilt', remaining <= FIVE_MINUTES && State.elapsedMs(task, at) > 0);
+            refs.heroStatus.textContent = status.text;
+            refs.heroTask.dataset.phase = status.key;
+        }
+
+        function renderHero(state, now) {
             const visible = State.inCategory(state.tasks, state.currentCategory);
             if (visible.length === 0) {
-                if (popHome) {
-                    popHome.appendChild(refs.popButton);
-                    refs.popButton.setAttribute('aria-label', 'Done');
+                heroId = null;
+                refs.heroTask.hidden = true;
+                refs.heroEmpty.hidden = false;
+                refs.thenLine.hidden = true;
+                refs.popButton.disabled = true;
+                const today = State.inCategory(state.completed, state.currentCategory)
+                    .filter(task => sameDay(task.completedAt, now));
+                if (today.length > 0) {
+                    const ripe = today.reduce((sum, task) => sum + State.ripeCount(task, 0), 0);
+                    refs.emptyTitle.textContent = "Plate's clean.";
+                    refs.emptySub.textContent = `${today.length} done today${ripe > 0 ? ' · ' : ''}`;
+                    if (ripe > 0) tomatoTally(ripe).forEach(node => refs.emptySub.appendChild(node));
+                } else {
+                    refs.emptyTitle.textContent = 'Empty plate.';
+                    refs.emptySub.textContent = "What's the one thing?";
                 }
-                refs.taskStack.replaceChildren(emptyState('No tasks in stack', 'Type one above and press Enter.'));
                 return;
             }
-            const now = Date.now();
+            const rest = visible.slice(0, -1);
+            const task = visible[visible.length - 1];
+            const name = shorten(task.text);
+            const running = State.isRunning(task);
+            const ripe = State.isRipe(task);
+            const card = refs.heroTask;
+            const changed = heroId !== null && !State.sameId(heroId, task.id);
+            heroId = task.id;
+            refs.heroEmpty.hidden = true;
+            card.hidden = false;
+            card.dataset.id = task.id;
+            // A rename in progress owns the text node until it finishes
+            if (!card.classList.contains('editing')) {
+                refs.heroText.textContent = task.text;
+                refs.heroText.setAttribute('title', task.text);
+            }
+            refs.timerButton.dataset.id = task.id;
+            refs.timerButton.classList.toggle('running', running);
+            const verb = running ? 'Pause' : (ripe ? 'One more' : 'Start');
+            refs.timerLabel.textContent = verb;
+            const timerLabel = running ? `Pause timer for "${name}"` : (ripe ? `Start one more tomato for "${name}"` : `Start timer for "${name}"`);
+            refs.timerButton.setAttribute('aria-label', timerLabel);
+            refs.timerButton.setAttribute('title', timerLabel);
+            refs.popButton.disabled = false;
+            refs.popButton.setAttribute('aria-label', `Done: "${name}"`);
+            [['down', `Move "${name}" down`, rest.length === 0], ['archive', `Archive "${name}"`, false], ['remove', `Delete "${name}"`, false]]
+                .forEach(([action, label, disabled]) => {
+                    const button = card.querySelector(action === 'down' ? '.move-down-btn' : (action === 'archive' ? '.archive-btn' : '.remove-btn'));
+                    button.dataset.id = task.id;
+                    button.setAttribute('title', label);
+                    button.setAttribute('aria-label', label);
+                    button.disabled = disabled;
+                });
+
+            const ripened = State.ripeCount(task, now);
+            refs.heroTally.hidden = ripened === 0;
+            refs.heroTally.setAttribute('aria-label', `${ripened} ${ripened === 1 ? 'tomato' : 'tomatoes'} ripened`);
+            refs.heroTally.replaceChildren(...tomatoTally(ripened));
+            paintDial(state, now);
+
+            if (rest.length === 0) {
+                refs.thenLine.hidden = false;
+                refs.thenLink.hidden = true;
+                refs.thenNone.hidden = false;
+            } else {
+                const next = rest[rest.length - 1];
+                refs.thenLine.hidden = false;
+                refs.thenNone.hidden = true;
+                refs.thenLink.hidden = false;
+                refs.thenLink.replaceChildren(
+                    el('span', { class: 'then-label', text: 'Then: ' }),
+                    el('span', { class: 'then-name', text: next.text }),
+                    ...(rest.length > 1 ? [el('span', { class: 'then-more', text: ` · +${rest.length - 1}` })] : [])
+                );
+                refs.thenLink.setAttribute('aria-label', `Then: ${shorten(next.text)}${rest.length > 1 ? `, and ${rest.length - 1} more` : ''}. Jump to the list.`);
+            }
+            // The next task slides in from the right when the one before it is gone
+            if (changed && !reducedMotion()) {
+                card.classList.remove('became-top');
+                if (typeof card.getBoundingClientRect === 'function') card.getBoundingClientRect();
+                card.classList.add('became-top');
+            }
+        }
+
+        // Everything below the hero: the tasks that wait their turn
+        function renderStack(state) {
+            const visible = State.inCategory(state.tasks, state.currentCategory);
+            const rest = visible.slice(0, -1);
+            refs.stackRest.hidden = rest.length === 0;
             const before = snapshotStack(refs.taskStack);
-            const keep = keptTopCard(visible[visible.length - 1]);
-            // Top of the stack first
-            const items = visible.map((task, index) => {
-                const isTop = index === visible.length - 1;
+            // Next task first
+            const items = rest.map((task, index) => {
                 const name = shorten(task.text);
-                const data = id => ({ id: task.id, action: id });
-                // The top task carries no label: its size and the "Up next" divider below it say what it is
-                const running = State.isRunning(task);
-                const children = [
-                    el('div', { class: 'drag-handle', attrs: { 'aria-hidden': 'true' } }, [icon('grip')]),
-                    el('div', { class: 'task-text', text: task.text, attrs: { title: task.text } })
-                ];
-                // Elapsed time shows on the top task and on whichever timer is running; paused time on lower rows stays out of sight
-                const time = (isTop || running) ? timeLabel(task, now) : null;
-                if (time) children.push(time);
-                const timerLabel = running ? `Pause timer for "${name}"` : `Start timer for "${name}"`;
-                const timerBtn = iconButton(running ? 'task-action-btn timer-btn running' : 'task-action-btn timer-btn',
-                    running ? 'pause' : 'play', timerLabel, data('timer'));
-                const actions = [
-                    iconButton('task-action-btn move-up-btn', 'up', `Move "${name}" up`, data('up'), isTop),
-                    iconButton('task-action-btn move-down-btn', 'down', `Move "${name}" down`, data('down'), index === 0),
-                    iconButton('task-action-btn archive-btn', 'archive', `Archive "${name}"`, data('archive')),
-                    iconButton('task-action-btn remove-btn', 'close', `Delete "${name}"`, data('remove'))
-                ];
-                if (isTop) {
-                    // The one thing to do now: Start and Done sit right next to it
-                    timerBtn.classList.add('with-label');
-                    timerBtn.appendChild(el('span', { text: running ? 'Pause' : 'Start' }));
-                    refs.popButton.setAttribute('aria-label', `Done: "${name}"`);
-                    children.push(el('div', { class: 'task-actions' }, actions));
-                    if (keep) return refreshTopCard(keep, children, timerBtn);
-                    children.push(el('div', { class: 'now-actions' }, [timerBtn, refs.popButton]));
-                } else {
-                    // Lower rows stay quiet: a timer button only while that timer is running
-                    if (running) actions.unshift(timerBtn);
-                    children.push(el('div', { class: 'task-actions' }, actions));
-                }
+                const data = action => ({ id: task.id, action });
                 return el('div', {
-                    class: isTop ? 'task-item top-task' : 'task-item',
+                    class: 'task-item',
                     attrs: { role: 'listitem' },
                     data: { id: task.id }
-                }, children);
+                }, [
+                    el('div', { class: 'drag-handle', attrs: { 'aria-hidden': 'true' } }, [icon('grip')]),
+                    el('div', { class: 'task-text', text: task.text, attrs: { title: task.text } }),
+                    el('div', { class: 'task-actions' }, [
+                        iconButton('task-action-btn move-up-btn', 'up', `Move "${name}" up`, data('up')),
+                        iconButton('task-action-btn move-down-btn', 'down', `Move "${name}" down`, data('down'), index === 0),
+                        iconButton('task-action-btn archive-btn', 'archive', `Archive "${name}"`, data('archive')),
+                        iconButton('task-action-btn remove-btn', 'close', `Delete "${name}"`, data('remove'))
+                    ])
+                ]);
             }).reverse();
-            if (items.length > 1) {
-                const rest = items.length - 1;
-                items.splice(1, 0, el('div', {
-                    class: 'stack-divider',
-                    text: `Up next · ${rest}`,
-                    attrs: { 'aria-hidden': 'true' }
-                }));
-            }
-            if (keep) {
-                Array.from(refs.taskStack.children).forEach(node => { if (node !== keep) refs.taskStack.removeChild(node); });
-                items.slice(1).forEach(node => refs.taskStack.appendChild(node));
-            } else {
-                refs.taskStack.replaceChildren(...items);
-            }
+            refs.taskStack.replaceChildren(...items);
             animateStack(refs.taskStack, before);
-        }
-
-        // The top card stays in the page while the same task is on top. A re-render between mousedown and
-        // mouseup (an edit field saving on blur) would otherwise take Done out from under the pointer, and
-        // the browser drops the click; it would also drop keyboard focus on Done or Start.
-        function keptTopCard(topTask) {
-            const actions = refs.popButton.parentNode;
-            const card = actions && actions.parentNode;
-            if (!card || card.parentNode !== refs.taskStack || !card.classList.contains('top-task')) return null;
-            return State.sameId(card.dataset.id, topTask.id) ? card : null;
-        }
-
-        // Swaps in the card's new contents around the Done button, which never moves
-        function refreshTopCard(card, children, timerBtn) {
-            const nowActions = refs.popButton.parentNode;
-            Array.from(card.children).forEach(node => { if (node !== nowActions) card.removeChild(node); });
-            children.forEach(node => card.insertBefore(node, nowActions));
-            const oldTimer = Array.from(nowActions.children).find(node => node !== refs.popButton);
-            if (oldTimer) {
-                // Updated in place, so a press or focus on Start survives too
-                oldTimer.className = timerBtn.className;
-                ['title', 'aria-label'].forEach(name => oldTimer.setAttribute(name, timerBtn.getAttribute(name)));
-                oldTimer.replaceChildren(...Array.from(timerBtn.childNodes));
-            } else {
-                nowActions.insertBefore(timerBtn, refs.popButton);
-            }
-            card.classList.remove('editing');
-            // A drag that left the top card where it was may have shifted it; the stack animation takes over
-            card.style.transform = '';
-            return card;
         }
 
         function renderHistory(container, tasks, spec) {
@@ -357,20 +407,21 @@
             const count = State.inCategory(state.tasks, state.currentCategory).length;
             refs.stackCount.textContent = String(count);
             if (refs.stackLabel) refs.stackLabel.textContent = count === 1 ? 'task' : 'tasks';
-            refs.popButton.disabled = count === 0;
             if (refs.renameCategoryBtn) refs.renameCategoryBtn.disabled = false;
             if (refs.deleteCategoryBtn) refs.deleteCategoryBtn.disabled = state.categories.length <= 1;
         }
 
         function renderAll(state) {
+            const now = Date.now();
             renderTabs(state);
+            renderHero(state, now);
             renderStack(state);
             renderArchived(state);
             renderCompleted(state);
             updateControls(state);
         }
 
-        return { renderAll };
+        return { renderAll, paintDial };
     }
 
     const api = { create };

@@ -12,15 +12,23 @@
 
     const IDS = [
         'taskInput', 'addTaskBtn', 'popButton', 'taskStack', 'taskPanel', 'archivedTasks', 'completedTasks',
+        'hero', 'heroEmpty', 'heroTask', 'heroText', 'heroClock', 'heroStatus', 'heroTally', 'dial', 'dialArc',
+        'timerButton', 'timerLabel', 'thenLine', 'thenLink', 'thenNone', 'stackRest', 'emptyTitle', 'emptySub',
         'archivedCount', 'completedCount', 'tabsList', 'addCategoryBtn', 'renameCategoryBtn', 'deleteCategoryBtn',
         'exportBtn', 'importBtn', 'importFile', 'liveRegion', 'toast', 'toastMessage', 'toastAction', 'toastClose',
         'dialog', 'dialogForm', 'dialogTitle', 'dialogMessage', 'dialogField', 'dialogLabel', 'dialogInput',
         'dialogError', 'dialogOk', 'dialogCancel'
     ];
 
-    function quote(text) {
+    const BASE_TITLE = 'One Tomato';
+
+    function shorten(text) {
         const flat = String(text).replace(/\s+/g, ' ').trim();
-        return `"${flat.length > 40 ? flat.slice(0, 39) + '…' : flat}"`;
+        return flat.length > 40 ? flat.slice(0, 39) + '…' : flat;
+    }
+
+    function quote(text) {
+        return `"${shorten(text)}"`;
     }
 
     class TaskStackApp {
@@ -28,6 +36,8 @@
             this.win = win;
             this.doc = win.document;
             this.startupNotices = [];
+            this.notes = [];
+            this.edit = null;
             this.storage = this.openStorage();
             this.canSave = true;
             this.saveErrorShown = false;
@@ -54,6 +64,9 @@
             this.renderer = Render.create(this.doc, this.refs);
 
             this.loadFromStorage();
+            // A timer that ran past its tomato while the page was closed is stopped now, with its time kept
+            if (this.reconcile(Date.now())) this.save();
+            this.startupNotices.push(...this.notes.splice(0));
             this.bindEvents();
             Dnd.attach(this.refs, {
                 onReorderTasks: (draggedId, targetId, above) => {
@@ -100,11 +113,14 @@
 
         // Re-renders while keeping keyboard focus on a sensible element.
         render() {
+            // A rename lives in the row it started in; if that row is about to be rebuilt, save it first
+            if (this.edit && !(this.edit.hero && State.sameId(this.edit.id, this.topId()))) this.edit.finish(true);
             const token = this.captureFocus();
             this.renderer.renderAll(this.state);
             this.applyOpenRow();
             this.restoreFocus(token);
             this.syncTicker();
+            this.updateTitle(Date.now());
         }
 
         // On touch the row actions are folded away; tapping a row opens it (one at a time)
@@ -114,15 +130,47 @@
         }
 
         applyOpenRow() {
-            this.itemsOf(this.refs.taskStack).forEach(node => {
+            [this.refs.heroTask, ...this.itemsOf(this.refs.taskStack)].forEach(node => {
                 node.classList.toggle('open', this.openId != null && State.sameId(node.dataset.id, this.openId));
             });
         }
 
         commit() {
+            this.reconcile(Date.now());
             this.ui.hideUndo();
             this.render();
             this.save();
+        }
+
+        // ---- Timer rules ---------------------------------------------------
+        // Applied before anything is shown or saved, always with the same `now`:
+        //  - a timer past its tomato boundary is stopped (never completed), keeping the time it logged
+        //  - a running timer whose task is no longer on top of its category is paused
+        // Returns true when it changed something; what to tell the user is collected in this.notes.
+
+        reconcile(now) {
+            const ripened = State.settleRipe(this.state, now);
+            const paused = State.pauseBuried(this.state, now);
+            ripened.forEach(({ task, overshoot }) => {
+                this.notes.push(overshoot > 0
+                    ? `${quote(task.text)} ran past its tomato while you were away. Timer stopped; all ${State.formatDuration(State.elapsedMs(task))} kept.`
+                    : `Ripe! ${quote(task.text)} — 25 minutes done.`);
+            });
+            paused.forEach(task => this.notes.push(`Paused ${quote(task.text)} — new thing on top.`));
+            return ripened.length + paused.length > 0;
+        }
+
+        // Announces a message together with any timer notes collected since the last one
+        say(message) {
+            const extra = this.notes.splice(0).join(' ');
+            this.ui.announce(extra ? `${message} ${extra}`.trim() : message);
+        }
+
+        updateTitle(now) {
+            const running = State.runningTask(this.state);
+            this.doc.title = running
+                ? `${State.formatRemaining(State.remainingMs(running, now))} · ${shorten(running.text)}`
+                : BASE_TITLE;
         }
 
         // ---- Timer ticking -------------------------------------------------
@@ -139,37 +187,54 @@
         }
 
         tick() {
-            const running = State.runningTask(this.state);
-            if (!running) { this.syncTicker(); return; }
-            const label = this.refs.taskStack.querySelector('.task-time.running');
-            if (label && State.sameId(label.dataset.timeFor, running.id)) {
-                label.textContent = State.formatClock(State.elapsedMs(running));
+            const now = Date.now();
+            if (this.reconcile(now)) {
+                // A tomato just ripened (or the tab woke up late): redraw the hero and say so once
+                this.render();
+                this.save();
+                this.say('');
+                return;
             }
+            if (!State.runningTask(this.state)) { this.syncTicker(); return; }
+            this.renderer.paintDial(this.state, now);
+            this.updateTitle(now);
         }
 
         toggleTimer(id) {
+            const before = this.findTask(this.state.tasks, id);
+            if (!before) return;
+            const wasRunning = State.isRunning(before);
+            const now = Date.now();
+            this.reconcile(now);
             const task = this.findTask(this.state.tasks, id);
-            if (!task) return;
-            const wasRunning = State.isRunning(task);
-            if (!State.toggleTimer(this.state, id).ok) return;
+            if (wasRunning && !State.isRunning(task)) {
+                // The timer ripened before this click was handled: it is already stopped, do not start it again
+                this.commit();
+                this.say('');
+                return;
+            }
+            if (!State.toggleTimer(this.state, id, now).ok) return;
             this.commit();
-            const spent = State.elapsedMs(this.findTask(this.state.tasks, id));
-            this.ui.announce(wasRunning
+            const spent = State.elapsedMs(this.findTask(this.state.tasks, id), now);
+            this.say(wasRunning
                 ? `Timer paused for ${quote(task.text)} at ${State.formatDuration(spent)}.`
                 : `Timer started for ${quote(task.text)}.`);
         }
 
         // Applies `change` (a State operation) and offers to undo it.
         withUndo(message, change) {
+            // Settle first, so the snapshot (and the action) see the timers as they really are now
+            this.reconcile(Date.now());
             const snapshot = State.clone(this.state);
             if (!change().ok) return false;
             this.commit();
-            this.ui.notify(message, {
+            const extra = this.notes.splice(0).join(' ');
+            this.ui.notify(extra ? `${message} ${extra}` : message, {
                 actionLabel: 'Undo',
                 onAction: () => {
                     this.state = snapshot;
                     this.commit();
-                    this.ui.announce('Undone.');
+                    this.say('Undone.');
                 }
             });
             return true;
@@ -187,7 +252,7 @@
             const { refs } = this;
             const active = this.doc.activeElement;
             if (!active || active === this.doc.body || typeof active.closest !== 'function') return null;
-            if (active === refs.popButton) return { type: 'pop', keyboard: this.isKeyboardFocus(active) };
+            if (refs.heroTask.contains(active)) return { type: 'hero', node: active, keyboard: this.isKeyboardFocus(active) };
             if (refs.tabsList.contains(active)) return { type: 'tab' };
             for (const list of [refs.taskStack, refs.archivedTasks, refs.completedTasks]) {
                 if (!list.contains(active)) continue;
@@ -223,12 +288,23 @@
             if (token.type === 'tab') {
                 const tab = refs.tabsList.querySelector('.tab-active .tab-button');
                 if (tab) tab.focus();
-            } else if (token.type === 'pop') {
-                // The button moves into the new top card (or back home), which drops focus
-                if (token.keyboard) (refs.popButton.disabled ? refs.taskInput : refs.popButton).focus();
+            } else if (token.type === 'hero') {
+                // The hero's buttons never leave the page, so focus normally stays put. It is moved on only
+                // when its button went away (the last task is done) or is disabled now.
+                const usable = !refs.heroTask.hidden && !token.node.disabled;
+                if (usable) {
+                    if (this.doc.activeElement !== token.node) token.node.focus();
+                } else if (token.keyboard) {
+                    const fallback = [refs.popButton, refs.timerButton].find(button => !button.disabled && !refs.heroTask.hidden);
+                    (fallback || refs.taskInput).focus();
+                }
             } else {
                 const items = this.itemsOf(token.list);
                 let item = items.find(node => State.sameId(node.dataset.id, token.id));
+                // A row that was moved to the top is now the hero: focus follows it there
+                if (!item && token.list === refs.taskStack && !refs.heroTask.hidden && State.sameId(refs.heroTask.dataset.id, token.id)) {
+                    item = refs.heroTask;
+                }
                 // The item itself is gone: only a keyboard user needs to be moved on to its neighbour
                 if (!item && token.keyboard) item = items[Math.min(token.index, items.length - 1)];
                 if (item) {
@@ -279,34 +355,37 @@
             });
             refs.tabsList.addEventListener('keydown', event => this.onTabKeydown(event));
 
-            refs.taskStack.addEventListener('click', event => {
-                const button = event.target.closest('.task-action-btn');
-                if (!button) {
-                    const item = event.target.closest('.task-item');
-                    if (item && !(event.detail > 1) && !item.classList.contains('editing') && !event.target.closest('button, input')) this.toggleRow(item);
-                    return;
-                }
-                const id = button.dataset.id;
-                switch (button.dataset.action) {
-                    case 'timer': this.toggleTimer(id); break;
-                    case 'up': this.moveTask(id, 'up'); break;
-                    case 'down': this.moveTask(id, 'down'); break;
-                    case 'archive': this.archiveTask(id); break;
-                    case 'remove': this.removeTask(id); break;
-                    default: break;
-                }
-            });
-            // Double-click (or F2 with the keyboard) edits a task's text in place
-            refs.taskStack.addEventListener('dblclick', event => {
-                const item = event.target.closest && event.target.closest('.task-item');
-                if (item && !event.target.closest('button, input')) this.startEdit(item, false);
-            });
-            refs.taskStack.addEventListener('keydown', event => {
-                if (event.key !== 'F2') return;
-                const item = event.target.closest && event.target.closest('.task-item');
-                if (!item || event.target.closest('input')) return;
-                event.preventDefault();
-                this.startEdit(item, true);
+            // The hero (top task) and the list below it share the same row behaviour
+            [refs.heroTask, refs.taskStack].forEach(container => {
+                container.addEventListener('click', event => {
+                    const button = event.target.closest('.task-action-btn, .hero-btn');
+                    if (!button) {
+                        const item = event.target.closest('.task-item, .top-task');
+                        if (item && !(event.detail > 1) && !item.classList.contains('editing') && !event.target.closest('button, input')) this.toggleRow(item);
+                        return;
+                    }
+                    const id = button.dataset.id;
+                    switch (button.dataset.action) {
+                        case 'timer': this.toggleTimer(id); break;
+                        case 'up': this.moveTask(id, 'up'); break;
+                        case 'down': this.moveTask(id, 'down'); break;
+                        case 'archive': this.archiveTask(id); break;
+                        case 'remove': this.removeTask(id); break;
+                        default: break;
+                    }
+                });
+                // Double-click (or F2 with the keyboard) edits a task's text in place
+                container.addEventListener('dblclick', event => {
+                    const item = event.target.closest && event.target.closest('.task-item, .top-task');
+                    if (item && !event.target.closest('button, input')) this.startEdit(item, false);
+                });
+                container.addEventListener('keydown', event => {
+                    if (event.key !== 'F2') return;
+                    const item = event.target.closest && event.target.closest('.task-item, .top-task');
+                    if (!item || event.target.closest('input')) return;
+                    event.preventDefault();
+                    this.startEdit(item, true);
+                });
             });
             refs.archivedTasks.addEventListener('click', event => {
                 const restore = event.target.closest('.restore-btn');
@@ -349,7 +428,10 @@
                 if (event.storageArea === this.storage && (event.key === Storage.KEY || event.key === null)) {
                     this.ui.hideUndo();
                     this.loadFromStorage();
+                    const changed = this.reconcile(Date.now());
                     this.render();
+                    if (changed) this.save();
+                    this.notes.length = 0;
                 }
             });
         }
@@ -369,7 +451,7 @@
                 const neighbour = names[index + (right ? 1 : -1)];
                 if (neighbour && State.reorderCategories(this.state, names[index], neighbour, left).ok) {
                     this.commit();
-                    this.ui.announce(`Moved category ${quote(tab.dataset.category)} ${right ? 'right' : 'left'}.`);
+                    this.say(`Moved category ${quote(tab.dataset.category)} ${right ? 'right' : 'left'}.`);
                 }
                 return;
             }
@@ -397,17 +479,25 @@
             if (!this.report(result)) return false;
             this.commit();
             const count = State.inCategory(this.state.tasks, this.state.currentCategory).length;
-            this.ui.announce(`Added ${quote(result.task.text)} to ${this.state.currentCategory}. ${count} ${count === 1 ? 'task' : 'tasks'} in the stack.`);
+            this.say(`Added ${quote(result.task.text)} to ${this.state.currentCategory}. ${count} ${count === 1 ? 'task' : 'tasks'} in the stack.`);
             return true;
         }
 
         popTask() {
+            const now = Date.now();
+            this.reconcile(now);
             const index = State.topTaskIndex(this.state);
             if (index === -1) return;
             const task = this.state.tasks[index];
-            const spent = State.elapsedMs(task);
+            const spent = State.elapsedMs(task, now);
             const detail = spent > 0 ? ` in ${State.formatDuration(spent)}` : '';
-            this.withUndo(`Completed ${quote(task.text)}${detail}.`, () => State.pop(this.state));
+            const more = State.inCategory(this.state.tasks, this.state.currentCategory).length > 1;
+            this.withUndo(`Done ${quote(task.text)}${detail}. ${more ? 'Next tomato!' : "Plate's clean!"}`, () => State.pop(this.state));
+        }
+
+        topId() {
+            const index = State.topTaskIndex(this.state);
+            return index === -1 ? null : this.state.tasks[index].id;
         }
 
         findTask(list, id) {
@@ -419,7 +509,7 @@
             if (!task || !State.moveTask(this.state, id, direction).ok) return;
             this.commit();
             const total = State.inCategory(this.state.tasks, task.category).length;
-            this.ui.announce(`Moved ${quote(task.text)} ${direction}. Position ${State.positionFromTop(this.state, id)} of ${total}.`);
+            this.say(`Moved ${quote(task.text)} ${direction}. Position ${State.positionFromTop(this.state, id)} of ${total}.`);
         }
 
         // Swaps the row's text for an input; Enter or leaving the field saves, Escape cancels.
@@ -427,6 +517,7 @@
             if (item.querySelector('.task-edit')) return;
             const task = this.findTask(this.state.tasks, item.dataset.id);
             const textNode = item.querySelector('.task-text');
+            const isHero = item === this.refs.heroTask;
             if (!task || !textNode) return;
             const input = this.doc.createElement('input');
             input.type = 'text';
@@ -444,8 +535,9 @@
             const finish = save => {
                 if (done) return;
                 done = true;
+                this.edit = null;
                 const value = input.value;
-                input.parentNode.removeChild(input);
+                if (input.parentNode) input.parentNode.removeChild(input);
                 textNode.hidden = false;
                 item.classList.remove('editing');
                 let row = item;
@@ -453,15 +545,19 @@
                     const result = State.renameTask(this.state, task.id, value);
                     if (this.report(result)) {
                         this.commit();
-                        this.ui.announce(`Renamed to ${quote(result.task.text)}.`);
-                        row = this.itemsOf(this.refs.taskStack).find(node => State.sameId(node.dataset.id, task.id));
+                        this.say(`Renamed to ${quote(result.task.text)}.`);
+                        row = [this.refs.heroTask, ...this.itemsOf(this.refs.taskStack)].find(node => !node.hidden && State.sameId(node.dataset.id, task.id));
                     }
                 }
                 if (viaKeyboard && row) {
-                    const button = Array.from(row.querySelectorAll('button')).find(b => !b.disabled);
-                    if (button) button.focus();
+                    // Back to where F2 was pressed: the task's own text in the hero, the first button in a row
+                    const target = row === this.refs.heroTask
+                        ? this.refs.heroText
+                        : Array.from(row.querySelectorAll('button')).find(b => !b.disabled);
+                    if (target) target.focus();
                 }
             };
+            this.edit = { id: task.id, hero: isHero, finish };
             input.addEventListener('keydown', event => {
                 if (event.isComposing || event.keyCode === 229) return;
                 if (event.key === 'Enter') { event.preventDefault(); finish(true); }
@@ -533,7 +629,7 @@
         createCategory(name) {
             if (this.report(State.createCategory(this.state, name))) {
                 this.commit();
-                this.ui.announce(`Category ${quote(this.state.currentCategory)} added.`);
+                this.say(`Category ${quote(this.state.currentCategory)} added.`);
             }
         }
 
