@@ -563,7 +563,8 @@ test('start, ripen, one more, done, next: the 25-minute flow', async ({ page }) 
     await page.clock.runFor(5 * MIN);
     await expect(page.locator('#heroStatus')).toHaveText('Ripe! Take five, then Done — or one more?');
     await expect(page.locator('#timerButton')).toContainText('One more');
-    await expect(page).toHaveTitle('One Tomato');
+    await expect(page.locator('#heroClock')).toHaveText('00:00');
+    await expect(page).toHaveTitle('Ripe! · call the bank');
     await expect(page.locator('#liveRegion')).toContainText('Ripe! "call the bank" — 25 minutes done.');
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('fileDB')).tasks.find(t => t.id === 'seed1'));
     expect(stored.timeSpent).toBe(25 * MIN);
@@ -574,6 +575,7 @@ test('start, ripen, one more, done, next: the 25-minute flow', async ({ page }) 
 
     await page.locator('#timerButton').click();      // one more
     await expect(page.locator('#heroStatus')).toHaveText('Ripening…');
+    await expect(page).toHaveTitle('25:00 · call the bank');
     await page.clock.runFor(2 * MIN);
     await page.locator('#timerButton').click();      // pause
     await expect(page.locator('#heroClock')).toHaveText('23:00');
@@ -586,6 +588,126 @@ test('start, ripen, one more, done, next: the 25-minute flow', async ({ page }) 
     await expect(page.locator('#thenNone')).toBeVisible();
     await expect(page.locator('#thenNone')).toHaveText('Last one on the plate.');
     await expect(page.locator('#thenLink')).toBeHidden();
+});
+
+// Background tabs throttle setInterval (Chrome: about once a minute) and phones freeze it, so the first tick
+// after 25:00 can come much later. An open page's tomato still ripened at 25:00.
+const T_START = Date.parse('2026-10-10T09:00:00Z');
+const RIPE_TEXT = 'Ripe! Take five, then Done — or one more?';
+
+async function startNearBoundary(page, text) {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.clock.install({ time: new Date(T_START) });
+    await page.goto('/');
+    await addTask(page, text);
+    await page.locator('#timerButton').click();
+    await page.clock.runFor(24 * MIN + 59 * 1000);
+    await expect(page.locator('#heroClock')).toHaveText('00:01');
+}
+
+// Moves the clock with no tick at all (pauseAt would fire the overdue tick once): a frozen tab
+async function jumpWithoutTick(page, to) {
+    await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now()) + 100));
+    await page.clock.setSystemTime(new Date(to));
+}
+
+const storedTop = page => page.evaluate(() => JSON.parse(localStorage.getItem('fileDB')).tasks.at(-1));
+
+async function expectRipe(page, text) {
+    await expect(page.locator('#heroClock')).toHaveText('00:00');
+    await expect(page.locator('#heroStatus')).toHaveText(RIPE_TEXT);
+    await expect(page.locator('#timerButton')).toContainText('One more');
+    await expect(page).toHaveTitle(`Ripe! · ${text}`);
+    const stored = await storedTop(page);
+    expect(stored.timeSpent).toBe(25 * MIN);
+    expect(stored.timerStartedAt).toBeUndefined();
+}
+
+for (const [label, late] of [['40 seconds', 40 * 1000], ['10 minutes', 10 * MIN]]) {
+    test(`a tick ${label} late still ripens the tomato at exactly 25:00, with a visible toast`, async ({ page }) => {
+        await startNearBoundary(page, 'late tick');
+        await page.clock.pauseAt(new Date(T_START + 25 * MIN + late));    // no tick fired in between
+        await page.clock.runFor(1000);                                     // the late tick
+        await expectRipe(page, 'late tick');
+        await expect(page.locator('#toast')).toBeVisible();
+        await expect(page.locator('#toastMessage')).toHaveText('Ripe! "late tick" — 25 minutes done. The timer stopped at 25:00.');
+        await expect(page.locator('#liveRegion')).toContainText('Ripe! "late tick" — 25 minutes done.');
+        // One more is a fresh 25 minutes
+        await page.locator('#timerButton').click();
+        await expect(page.locator('#heroClock')).toHaveText('25:00');
+        await expect(page).toHaveTitle('25:00 · late tick');
+    });
+}
+
+test('coming back to a frozen tab ripens the tomato at once, at 25:00', async ({ page }) => {
+    await startNearBoundary(page, 'frozen tab');
+    await jumpWithoutTick(page, T_START + 35 * MIN);                     // frozen: no tick for 10 minutes
+    await expect(page.locator('#heroStatus')).toHaveText('Almost ripe.');
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await expectRipe(page, 'frozen tab');
+    await expect(page.locator('#toastMessage')).toHaveText('Ripe! "frozen tab" — 25 minutes done. The timer stopped at 25:00.');
+});
+
+test('a tomato that ripens while the tab is hidden changes the title, and is toasted when the user is back', async ({ page }) => {
+    await startNearBoundary(page, 'other tab');
+    await page.evaluate(() => {
+        window.__hidden = true;
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => window.__hidden });
+        document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await page.clock.runFor(2000);
+    await expect(page).toHaveTitle('Ripe! · other tab');
+    await expect(page.locator('#toast')).toBeHidden();
+    expect((await storedTop(page)).timeSpent).toBe(25 * MIN);
+    await page.clock.runFor(60 * 1000);                                    // longer than a toast would last
+    await page.evaluate(() => { window.__hidden = false; document.dispatchEvent(new Event('visibilitychange')); });
+    await expect(page.locator('#toastMessage')).toHaveText('Ripe! "other tab" — 25 minutes done.');
+    await expectRipe(page, 'other tab');
+});
+
+test('Pause or Done pressed after the boundary, before the late tick, records 25 minutes', async ({ page }) => {
+    await startNearBoundary(page, 'pause me');
+    await jumpWithoutTick(page, T_START + 25 * MIN + 40 * 1000);
+    await expect(page.locator('#timerButton')).toContainText('Pause');
+    await page.locator('#timerButton').click();                            // Pause, ahead of the tick
+    await expectRipe(page, 'pause me');
+    await expect(page.locator('#toastMessage')).toHaveText('Ripe! "pause me" — 25 minutes done. The timer stopped at 25:00.');
+
+    await page.locator('#timerButton').click();                            // One more
+    await page.clock.runFor(24 * MIN + 59 * 1000);
+    await expect(page.locator('#heroClock')).toHaveText('00:01');
+    await jumpWithoutTick(page, T_START + 25 * MIN + 40 * 1000 + 35 * MIN);   // 10 minutes past the second boundary
+    await page.locator('#popButton').click();                              // Done, ahead of the tick
+    await expect(page.locator('#toastMessage')).toContainText('Done "pause me" in 50m.');
+    const done = await page.evaluate(() => JSON.parse(localStorage.getItem('fileDB')).completed[0]);
+    expect(done.timeSpent).toBe(50 * MIN);
+    expect(done.timerStartedAt).toBeUndefined();
+    await expect(page).toHaveTitle('One Tomato');
+});
+
+test('the next task sliding in never widens a phone screen', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+    for (const text of ['one', 'two', 'three']) await addTask(page, text);
+    // Done and add each start the 320 ms entrance; sample the page width through it
+    for (const action of ['done', 'add']) {
+        const widest = await page.evaluate(action => new Promise(resolve => {
+            if (action === 'done') document.getElementById('popButton').click();
+            else {
+                const input = document.getElementById('taskInput');
+                input.value = 'four';
+                input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            }
+            const start = performance.now();
+            let max = 0;
+            (function sample() {
+                max = Math.max(max, document.documentElement.scrollWidth);
+                if (performance.now() - start < 450) requestAnimationFrame(sample); else resolve(max);
+            })();
+        }), action);
+        expect(widest, action).toBeLessThanOrEqual(390);
+    }
+    await expect(page.locator('#heroTask')).toHaveClass(/became-top/);
 });
 
 test('keyboard only: add, Start, Done and the next task, without the mouse', async ({ page }) => {

@@ -113,6 +113,8 @@ input {
 
 .hero {
     margin-top: 6px;
+    /* The next task slides in from the right (nowIn): clip sideways so it never widens the page */
+    overflow-x: clip;
 }
 
 .top-task {

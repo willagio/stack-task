@@ -21,6 +21,13 @@
     ];
 
     const BASE_TITLE = 'One Tomato';
+    // A tomato noticed later than this after it ripened (a background tab) gets a visible toast, not only a spoken note
+    const LATE_NOTICE_MS = 5000;
+
+    // One run of a timer: the same task started again is a new run
+    function timerKey(task) {
+        return `${task.id}|${task.timerStartedAt}`;
+    }
 
     function shorten(text) {
         const flat = String(text).replace(/\s+/g, ' ').trim();
@@ -38,6 +45,14 @@
             this.startupNotices = [];
             this.notes = [];
             this.edit = null;
+            // Timer runs this page has seen running: past their boundary they ripened at it, however late a tick comes
+            this.watching = new Set();
+            // In this session only (never stored): task id -> timeSpent of a timer stopped on load past its boundary,
+            // with all its time kept. It shows as ripe until its time changes.
+            this.ripeAt = new Map();
+            this.lateNotice = false;
+            // A ripe note that came while the page was hidden: shown when the user is back
+            this.pendingNotice = null;
             this.storage = this.openStorage();
             this.canSave = true;
             this.saveErrorShown = false;
@@ -61,12 +76,13 @@
             this.refs.stackCount = this.doc.querySelector('.stack-count');
             this.refs.stackLabel = this.doc.querySelector('.stack-label');
             this.ui = Ui.create(this.win, this.refs);
-            this.renderer = Render.create(this.doc, this.refs);
+            this.renderer = Render.create(this.doc, this.refs, { isRipe: task => this.isShownRipe(task) });
 
             this.loadFromStorage();
             // A timer that ran past its tomato while the page was closed is stopped now, with its time kept
             if (this.reconcile(Date.now())) this.save();
             this.startupNotices.push(...this.notes.splice(0));
+            this.lateNotice = false;
             this.bindEvents();
             Dnd.attach(this.refs, {
                 onReorderTasks: (draggedId, targetId, above) => {
@@ -144,33 +160,63 @@
 
         // ---- Timer rules ---------------------------------------------------
         // Applied before anything is shown or saved, always with the same `now`:
-        //  - a timer past its tomato boundary is stopped (never completed), keeping the time it logged
+        //  - a timer past its tomato boundary is stopped (never completed). One this page was running is
+        //    recorded at exactly the boundary; one met for the first time keeps all the time it logged
         //  - a running timer whose task is no longer on top of its category is paused
         // Returns true when it changed something; what to tell the user is collected in this.notes.
 
         reconcile(now) {
-            const ripened = State.settleRipe(this.state, now);
+            const ripened = State.settleRipe(this.state, now, task => this.watching.has(timerKey(task)));
             const paused = State.pauseBuried(this.state, now);
-            ripened.forEach(({ task, overshoot }) => {
-                this.notes.push(overshoot > 0
-                    ? `${quote(task.text)} ran past its tomato while you were away. Timer stopped; all ${State.formatDuration(State.elapsedMs(task))} kept.`
-                    : `Ripe! ${quote(task.text)} — 25 minutes done.`);
+            ripened.forEach(({ task, late, kept }) => {
+                if (kept) {
+                    this.ripeAt.set(String(task.id), task.timeSpent);
+                    this.notes.push(`${quote(task.text)} ran past its tomato while you were away. Timer stopped; all ${State.formatDuration(State.elapsedMs(task))} kept.`);
+                } else if (late > LATE_NOTICE_MS) {
+                    this.lateNotice = true;
+                    this.notes.push(`Ripe! ${quote(task.text)} — 25 minutes done. The timer stopped at 25:00.`);
+                } else {
+                    if (this.doc.hidden) this.lateNotice = true;
+                    this.notes.push(`Ripe! ${quote(task.text)} — 25 minutes done.`);
+                }
             });
             paused.forEach(task => this.notes.push(`Paused ${quote(task.text)} — new thing on top.`));
+            this.state.tasks.forEach(task => { if (State.isRunning(task)) this.watching.add(timerKey(task)); });
             return ripened.length + paused.length > 0;
         }
 
-        // Announces a message together with any timer notes collected since the last one
-        say(message) {
-            const extra = this.notes.splice(0).join(' ');
-            this.ui.announce(extra ? `${message} ${extra}`.trim() : message);
+        // Paused on a boundary, or stopped past one on load in this session (with its time unchanged since)
+        isShownRipe(task) {
+            if (State.isRunning(task)) return false;
+            const id = String(task.id);
+            return State.isRipe(task) || (this.ripeAt.has(id) && this.ripeAt.get(id) === task.timeSpent);
         }
 
+        // Announces a message together with any timer notes collected since the last one.
+        // A tomato that ripened unseen (a background tab) is shown in a toast as well, once the page is visible.
+        say(message) {
+            const extra = this.notes.splice(0).join(' ');
+            const text = extra ? `${message} ${extra}`.trim() : message;
+            const show = this.lateNotice;
+            this.lateNotice = false;
+            if (show && !this.doc.hidden) {
+                this.ui.notify(text);
+                return;
+            }
+            if (show) this.pendingNotice = text;
+            this.ui.announce(text);
+        }
+
+        // The countdown while a timer runs; "Ripe!" while the top task waits after its tomato, for a user in another tab
         updateTitle(now) {
             const running = State.runningTask(this.state);
-            this.doc.title = running
-                ? `${State.formatRemaining(State.remainingMs(running, now))} · ${shorten(running.text)}`
-                : BASE_TITLE;
+            if (running) {
+                this.doc.title = `${State.formatRemaining(State.remainingMs(running, now))} · ${shorten(running.text)}`;
+                return;
+            }
+            const index = State.topTaskIndex(this.state);
+            const top = index === -1 ? null : this.state.tasks[index];
+            this.doc.title = top && this.isShownRipe(top) ? `Ripe! · ${shorten(top.text)}` : BASE_TITLE;
         }
 
         // ---- Timer ticking -------------------------------------------------
@@ -229,6 +275,7 @@
             if (!change().ok) return false;
             this.commit();
             const extra = this.notes.splice(0).join(' ');
+            this.lateNotice = false;
             this.ui.notify(extra ? `${message} ${extra}` : message, {
                 actionLabel: 'Undo',
                 onAction: () => {
@@ -423,6 +470,16 @@
                 }
             });
 
+            // Back from another tab: a tomato that ripened while ticks were throttled or frozen is shown at once
+            this.doc.addEventListener('visibilitychange', () => {
+                if (this.doc.hidden) return;
+                if (this.pendingNotice) {
+                    this.ui.notify(this.pendingNotice);
+                    this.pendingNotice = null;
+                }
+                this.tick();
+            });
+
             // Another tab changed the data: pick it up instead of overwriting it later
             this.win.addEventListener('storage', event => {
                 if (event.storageArea === this.storage && (event.key === Storage.KEY || event.key === null)) {
@@ -432,6 +489,7 @@
                     this.render();
                     if (changed) this.save();
                     this.notes.length = 0;
+                    this.lateNotice = false;
                 }
             });
         }

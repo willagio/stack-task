@@ -14,8 +14,6 @@
     const MAX_CATEGORY_LENGTH = 40;
     // One tomato = 25 minutes. Fixed on purpose: no setting to fiddle with.
     const POMODORO_MS = 25 * 60 * 1000;
-    // A timer noticed this soon after its boundary is recorded as exactly 25:00; later than that, every ms is kept
-    const SNAP_MS = 10 * 1000;
 
     let idCounter = 0;
 
@@ -151,10 +149,12 @@
     }
 
     // Stops every running timer that has passed its next 25-minute boundary (the timer never completes a task).
-    // Caught within SNAP_MS of the boundary it is recorded as exactly that boundary; caught later (the page was
-    // closed or in the background) the full elapsed time is kept, so nothing that was logged is ever dropped.
-    // Returns [{ task, overshoot }] for the tasks it stopped.
-    function settleRipe(state, now) {
+    // `watched(task)` says whether an open page has been running this timer. If so, it ripened at the boundary
+    // and is recorded as exactly that, however late it is noticed (a background tab's ticks are throttled or
+    // frozen; that delay is the app's, not time worked). A timer met for the first time, such as one left
+    // running by an older version while the page was closed, keeps its full elapsed time: nothing logged is dropped.
+    // Returns [{ task, late, kept }]: `late` is how long after the boundary it was noticed, `kept` whether that was logged.
+    function settleRipe(state, now, watched) {
         const at = now === undefined ? Date.now() : now;
         const stopped = [];
         state.tasks = state.tasks.map(task => {
@@ -163,10 +163,10 @@
             const boundary = (Math.floor(base / POMODORO_MS) + 1) * POMODORO_MS;
             const elapsed = elapsedMs(task, at);
             if (elapsed < boundary) return task;
-            const snapped = elapsed - boundary <= SNAP_MS;
+            const kept = !(typeof watched === 'function' && watched(task));
             const { timerStartedAt, ...rest } = task;
-            const next = { ...rest, timeSpent: snapped ? boundary : elapsed };
-            stopped.push({ task: next, overshoot: snapped ? 0 : elapsed - boundary });
+            const next = { ...rest, timeSpent: kept ? elapsed : boundary };
+            stopped.push({ task: next, late: elapsed - boundary, kept });
             return next;
         });
         return stopped;

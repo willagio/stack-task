@@ -203,3 +203,40 @@ test('validateCategoryName is exposed and ignores the category being renamed', (
     assert.equal(State.validateCategoryName(s, 'work', 'Work').ok, true);
     assert.equal(State.validateCategoryName(s, '  ', null).ok, false);
 });
+
+test('settleRipe: a timer the page was watching is recorded at its boundary however late; one met first keeps it all', () => {
+    const MIN = 60 * 1000;
+    const T0 = Date.parse('2026-10-10T09:00:00.000Z');
+    const running = (id, spent) => ({ text: id, id, category: 'Work', timeSpent: spent, timerStartedAt: new Date(T0).toISOString() });
+    for (const late of [0, 40 * 1000, 10 * MIN, 3 * 60 * MIN]) {
+        const s = State.createState({ tasks: [running('a', 0)] });
+        const stopped = State.settleRipe(s, T0 + 25 * MIN + late, () => true);
+        assert.equal(s.tasks[0].timeSpent, 25 * MIN, `${late} ms late`);
+        assert.equal('timerStartedAt' in s.tasks[0], false);
+        assert.ok(State.isRipe(s.tasks[0]));
+        assert.deepEqual(stopped.map(x => [x.late, x.kept]), [[late, false]]);
+    }
+    // the next boundary after time already logged: 30 min logged + 20 running -> 50:00
+    const more = State.createState({ tasks: [running('b', 30 * MIN)] });
+    State.settleRipe(more, T0 + 21 * MIN, () => true);
+    assert.equal(more.tasks[0].timeSpent, 50 * MIN);
+    // not yet at the boundary: untouched
+    const early = State.createState({ tasks: [running('c', 0)] });
+    assert.deepEqual(State.settleRipe(early, T0 + 25 * MIN - 1, () => true), []);
+    assert.ok(State.isRunning(early.tasks[0]));
+    // not watched (or no predicate, as on load): every logged ms is kept, even 1 ms past the boundary
+    for (const watched of [undefined, () => false]) {
+        const s = State.createState({ tasks: [running('d', 5 * MIN)] });
+        const stopped = State.settleRipe(s, T0 + 180 * MIN, watched);
+        assert.equal(s.tasks[0].timeSpent, 185 * MIN);
+        assert.equal(State.isRipe(s.tasks[0]), false);
+        assert.deepEqual(stopped.map(x => [x.late, x.kept]), [[160 * MIN, true]]);
+        const close = State.createState({ tasks: [running('e', 0)] });
+        State.settleRipe(close, T0 + 25 * MIN + 1, watched);
+        assert.equal(close.tasks[0].timeSpent, 25 * MIN + 1);
+    }
+    // the predicate decides per task
+    const mixed = State.createState({ tasks: [running('w', 0), { ...running('x', 0), category: 'Personal' }] });
+    State.settleRipe(mixed, T0 + 30 * MIN, task => task.id === 'w');
+    assert.deepEqual(mixed.tasks.map(t => t.timeSpent), [25 * MIN, 30 * MIN]);
+});

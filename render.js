@@ -54,13 +54,13 @@
     const WEDGE = 2 * Math.PI * 22;
 
     // What the hero says about the top task, from its timer alone
-    function statusOf(task, now) {
+    function statusOf(task, now, isRipe) {
         if (State.isRunning(task)) {
             return State.remainingMs(task, now) <= FIVE_MINUTES
                 ? { key: 'almost', text: 'Almost ripe.' }
                 : { key: 'running', text: 'Ripening…' };
         }
-        if (State.isRipe(task)) return { key: 'ripe', text: 'Ripe! Take five, then Done — or one more?' };
+        if (isRipe(task)) return { key: 'ripe', text: 'Ripe! Take five, then Done — or one more?' };
         if (State.elapsedMs(task, now) > 0) return { key: 'half', text: 'Half-ripe. Keep going?' };
         return { key: 'fresh', text: 'Fresh tomato. Start?' };
     }
@@ -74,7 +74,10 @@
             && date.getDate() === today.getDate();
     }
 
-    function create(doc, refs) {
+    // options.isRipe(task): whether the top task is shown as ripe (default: paused exactly on a boundary)
+    function create(doc, refs, options) {
+        const isRipe = (options && options.isRipe) || State.isRipe;
+
         // el('div', { class, text, attrs, data }, children)
         function el(tag, options, children) {
             const node = doc.createElement(tag);
@@ -217,16 +220,18 @@
             if (index === -1) return;
             const task = state.tasks[index];
             const at = now === undefined ? Date.now() : now;
-            const remaining = State.remainingMs(task, at);
-            const status = statusOf(task, at);
+            const status = statusOf(task, at, isRipe);
+            // A ripe tomato has no time left: 00:00 and an empty wedge, unlike the full 25:00 of a fresh one
+            const ripe = status.key === 'ripe';
+            const remaining = ripe ? 0 : State.remainingMs(task, at);
             refs.heroClock.textContent = State.formatRemaining(remaining);
             const minutes = Math.ceil(remaining / 60000);
-            const label = `${minutes} ${minutes === 1 ? 'minute' : 'minutes'} left`;
+            const label = ripe ? 'Ripe: no time left' : `${minutes} ${minutes === 1 ? 'minute' : 'minutes'} left`;
             if (refs.heroClock.getAttribute('aria-label') !== label) refs.heroClock.setAttribute('aria-label', label);
             // The wedge is set as an attribute: no transition, one step per second
             const visible = Math.max(0, Math.min(1, remaining / State.POMODORO_MS)) * WEDGE;
             refs.dialArc.setAttribute('stroke-dasharray', `${visible.toFixed(2)} ${WEDGE.toFixed(2)}`);
-            refs.dial.classList.toggle('tilt', remaining <= FIVE_MINUTES && State.elapsedMs(task, at) > 0);
+            refs.dial.classList.toggle('tilt', !ripe && remaining <= FIVE_MINUTES && State.elapsedMs(task, at) > 0);
             refs.heroStatus.textContent = status.text;
             refs.heroTask.dataset.phase = status.key;
         }
@@ -256,7 +261,7 @@
             const task = visible[visible.length - 1];
             const name = shorten(task.text);
             const running = State.isRunning(task);
-            const ripe = State.isRipe(task);
+            const ripe = !running && isRipe(task);
             const card = refs.heroTask;
             const changed = heroId !== null && !State.sameId(heroId, task.id);
             heroId = task.id;

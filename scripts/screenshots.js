@@ -65,6 +65,14 @@ function seedFocused() {
     return data;
 }
 
+// The hero task's tomato just ripened: 25 minutes logged, timer stopped
+function seedRipe() {
+    const data = seed();
+    const top = data.tasks.findIndex(t => t.id === 'w6');
+    data.tasks[top] = { ...data.tasks[top], timeSpent: 25 * MIN };
+    return data;
+}
+
 async function main() {
     const server = createServer();
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -107,6 +115,7 @@ async function main() {
         // 5. Phone: waiting, focused, just done, empty
         await scene(phone, seed(), 'mobile.png');
         await scene(phone, seedFocused(), 'mobile-focus.png');
+        await scene(phone, seedRipe(), 'mobile-ripe.png');
         await scene(phone, seed(), 'mobile-done.png', async page => {
             await page.locator('#popButton').tap();
             await page.waitForTimeout(500);

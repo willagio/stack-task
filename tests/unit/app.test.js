@@ -636,10 +636,14 @@ test('a tomato that ripens while the page is open stops the timer at exactly 25:
     assert.equal(app.stored().completed.length, 0, 'ripe never completes a task');
     assert.equal(app.$('heroStatus').textContent, 'Ripe! Take five, then Done — or one more?');
     assert.equal(app.$('timerLabel').textContent, 'One more');
-    assert.equal(app.$('heroClock').textContent, '25:00');
+    // no time left: unlike the full 25:00 of a fresh tomato
+    assert.equal(app.$('heroClock').textContent, '00:00');
+    assert.equal(app.$('heroClock').getAttribute('aria-label'), 'Ripe: no time left');
+    assert.equal(app.$('dialArc').getAttribute('stroke-dasharray'), '0.00 138.23');
     assert.equal(app.$('heroTally').hidden, false);
     assert.equal(app.live(), 'Ripe! "ripen" — 25 minutes done.');
-    assert.equal(app.document.title, 'One Tomato');
+    assert.equal(app.toast().hidden, true, 'on time and in view: the hero says it, no toast');
+    assert.equal(app.document.title, 'Ripe! · ripen', 'a signal for a user in another tab');
     // still ripe after a reload, with no new note
     const again = boot({ fileDB: app.localStorage.getItem('fileDB') }, null, app.time);
     assert.equal(again.$('heroStatus').textContent, 'Ripe! Take five, then Done — or one more?');
@@ -648,6 +652,7 @@ test('a tomato that ripens while the page is open stops the timer at exactly 25:
     again.$('timerButton').click();
     assert.equal(again.$('heroClock').textContent, '25:00');
     assert.equal(again.$('heroStatus').textContent, 'Ripening…');
+    assert.equal(again.document.title, '25:00 · ripen');
     again.time.now += 5 * MIN;
     again.$('timerButton').click();                        // pause
     assert.equal(again.stored().tasks[0].timeSpent, 30 * MIN);
@@ -662,7 +667,25 @@ test('a timer left running while the page was closed is stopped on load, keeping
     assert.equal('timerStartedAt' in stored, false);
     assert.match(app.toast().text, /"left on" ran past its tomato while you were away\. Timer stopped; all 3h 05m kept\./);
     assert.equal(app.log.ticks.length, 0, 'no ticker for a stopped timer');
+    // it is shown as ripe for this session (nothing extra is stored), so the user can tell it finished
+    assert.equal(app.$('heroStatus').textContent, 'Ripe! Take five, then Done — or one more?');
+    assert.equal(app.$('timerLabel').textContent, 'One more');
+    assert.equal(app.$('heroClock').textContent, '00:00');
+    assert.equal(app.document.title, 'Ripe! · left on');
+    assert.deepEqual(Object.keys(stored).sort(), ['category', 'createdAt', 'id', 'text', 'timeSpent']);
+    // One more starts the clock again from the time kept; paused, it is no longer ripe
+    app.$('timerButton').click();
+    assert.equal(app.$('heroClock').textContent, '15:00');
+    app.time.now += MIN;
+    app.$('timerButton').click();
+    assert.equal(app.stored().tasks[0].timeSpent, 186 * MIN);
+    assert.equal(app.$('heroStatus').textContent, 'Half-ripe. Keep going?');
     assert.equal(app.$('timerLabel').textContent, 'Start');
+    assert.equal(app.document.title, 'One Tomato');
+    // after a reload the kept time stays, and the session-only ripe look is gone
+    const again = boot({ fileDB: app.localStorage.getItem('fileDB') }, null, app.time);
+    assert.equal(again.stored().tasks[0].timeSpent, 186 * MIN);
+    assert.equal(again.$('timerLabel').textContent, 'Start');
 });
 
 test('a click that arrives before the tick still finds the timer stopped at its boundary', () => {
@@ -670,15 +693,101 @@ test('a click that arrives before the tick still finds the timer stopped at its 
     app.time.now += 40 * MIN;                              // background tab: no tick for 40 minutes
     app.$('timerButton').click();                          // the user presses Pause
     const stored = app.stored().tasks[0];
-    assert.equal(stored.timeSpent, 60 * MIN, 'the 60 minutes it really ran are kept');
+    // the page was open, so the tomato ripened at 25:00; the 35 minutes after that were the app not stopping it
+    assert.equal(stored.timeSpent, 25 * MIN, 'recorded at the boundary, however late it is noticed');
     assert.equal('timerStartedAt' in stored, false, 'the click did not start it again');
-    assert.equal(app.$('timerLabel').textContent, 'Start');
+    assert.equal(app.$('timerLabel').textContent, 'One more');
+    assert.equal(app.toast().hidden, false, 'noticed late: a visible toast, not only the live region');
+    assert.match(app.toast().text, /Ripe! "late" — 25 minutes done\. The timer stopped at 25:00\./);
     // Done on a timer that is past its boundary reports the real time
     const done = boot({ fileDB: db([task('late', 'y', { timerStartedAt: iso(T0 - 20 * MIN) })]) }, null, { now: T0 });
     done.time.now += 5 * MIN + 500;                        // crossed 25:00 by 500 ms, no tick yet
     done.$('popButton').click();
     assert.match(done.toast().text, /Done "late" in 25m\./);
     assert.equal(done.stored().completed[0].timeSpent, 25 * MIN);
+});
+
+test('a tomato noticed late by a throttled or frozen tick is still recorded at exactly 25:00, with a visible toast', () => {
+    for (const late of [40 * 1000, 10 * MIN]) {
+        const app = boot({ fileDB: db([task('slow tab', 's')]) }, null, { now: T0 });
+        app.$('timerButton').click();
+        app.time.now += 25 * MIN + late;                   // the first tick after the boundary comes late
+        app.tick();
+        const stored = app.stored().tasks[0];
+        assert.equal(stored.timeSpent, 25 * MIN, `${late} ms late`);
+        assert.equal('timerStartedAt' in stored, false);
+        assert.equal(app.$('heroClock').textContent, '00:00');
+        assert.equal(app.$('heroStatus').textContent, 'Ripe! Take five, then Done — or one more?');
+        assert.equal(app.$('timerLabel').textContent, 'One more');
+        assert.equal(app.document.title, 'Ripe! · slow tab');
+        assert.equal(app.toast().hidden, false);
+        assert.equal(app.toast().canUndo, false);
+        assert.match(app.toast().text, /Ripe! "slow tab" — 25 minutes done\. The timer stopped at 25:00\./);
+    }
+    // a few seconds late is an ordinary tick: the hero shows it, the live region says it, no toast
+    const prompt = boot({ fileDB: db([task('prompt', 'p')]) }, null, { now: T0 });
+    prompt.$('timerButton').click();
+    prompt.time.now += 25 * MIN + 3000;
+    prompt.tick();
+    assert.equal(prompt.stored().tasks[0].timeSpent, 25 * MIN);
+    assert.equal(prompt.toast().hidden, true);
+    assert.equal(prompt.live(), 'Ripe! "prompt" — 25 minutes done.');
+});
+
+test('coming back to the tab settles a ripe tomato at once; one that ripened while hidden is toasted on return', () => {
+    const app = boot({ fileDB: db([task('away', 'w')]) }, null, { now: T0 });
+    app.$('timerButton').click();
+    app.time.now += 25 * MIN + 10 * MIN;                   // frozen: no tick at all
+    app.document.dispatch('visibilitychange');
+    assert.equal(app.stored().tasks[0].timeSpent, 25 * MIN);
+    assert.equal(app.$('timerLabel').textContent, 'One more');
+    assert.equal(app.toast().hidden, false);
+    assert.match(app.toast().text, /Ripe! "away" — 25 minutes done\./);
+    // ripened by a (throttled) tick while the tab was hidden: the toast waits until the user is back
+    const hidden = boot({ fileDB: db([task('hidden', 'h')]) }, null, { now: T0 });
+    hidden.$('timerButton').click();
+    hidden.document.hidden = true;
+    hidden.time.now += 25 * MIN + 1000;
+    hidden.tick();
+    assert.equal(hidden.stored().tasks[0].timeSpent, 25 * MIN);
+    assert.equal(hidden.document.title, 'Ripe! · hidden');
+    assert.equal(hidden.toast().hidden, true, 'no toast that would time out unseen');
+    assert.equal(hidden.live(), 'Ripe! "hidden" — 25 minutes done.');
+    hidden.document.hidden = false;
+    hidden.document.dispatch('visibilitychange');
+    assert.equal(hidden.toast().hidden, false);
+    assert.equal(hidden.toast().text, 'Ripe! "hidden" — 25 minutes done.');
+});
+
+test('Done, Archive or Undo right after the boundary record the tomato at 25:00, not the time the tick was late', () => {
+    const done = boot({ fileDB: db([task('rest', 'a'), task('do it', 'd')]) }, null, { now: T0 });
+    done.$('timerButton').click();
+    done.time.now += 25 * MIN + 40 * 1000;
+    done.$('popButton').click();
+    assert.equal(done.stored().completed[0].timeSpent, 25 * MIN);
+    assert.match(done.toast().text, /^Done "do it" in 25m\. Next tomato! Ripe! "do it" — 25 minutes done\. The timer stopped at 25:00\.$/);
+    assert.equal(done.toast().canUndo, true);
+    // Undo brings it back ripe, not running again
+    done.$('toastAction').click();
+    assert.equal(done.stored().tasks[1].timeSpent, 25 * MIN);
+    assert.equal('timerStartedAt' in done.stored().tasks[1], false);
+    assert.equal(done.$('timerLabel').textContent, 'One more');
+    assert.equal(done.document.title, 'Ripe! · do it');
+    // Archive (with Undo) after a 10-minute late boundary
+    const archived = boot({ fileDB: db([task('file it', 'f')]) }, null, { now: T0 });
+    archived.$('timerButton').click();
+    archived.time.now += 35 * MIN;
+    archived.$('heroTask').querySelector('.archive-btn').click();
+    assert.equal(archived.stored().archived[0].timeSpent, 25 * MIN);
+    // Delete of a running task, then Undo after its boundary: the page was still watching it
+    const undo = boot({ fileDB: db([task('oops', 'o')]) }, null, { now: T0 });
+    undo.$('timerButton').click();
+    undo.time.now += 20 * MIN;
+    undo.$('heroTask').querySelector('.remove-btn').click();
+    undo.time.now += 10 * MIN;
+    undo.$('toastAction').click();
+    assert.equal(undo.stored().tasks[0].timeSpent, 25 * MIN);
+    assert.equal(undo.$('timerLabel').textContent, 'One more');
 });
 
 test('a running timer is paused when something else becomes the top task', () => {
