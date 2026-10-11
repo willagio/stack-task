@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Task Stack — preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+  :root {
+    --accent: #32d16a;
+    --accent-dim: #22a85a;
+    --bg: #000;
+    --card: #050806;
+    --input: #0b100c;
+    --top: #07140b;
+    --text: #e8f5ea;
+    --muted: #7da184;
+    --ink: #02140a;
+    --line: rgba(50, 209, 106, 0.14);
+    --line-strong: rgba(50, 209, 106, 0.45);
+    --danger: #ff5c5c;
+    --font: "Noto Sans KR", Inter, system-ui, sans-serif;
+    --mono: "JetBrains Mono", "Noto Sans KR", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100dvh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    display: flex;
+    justify-content: center;
+    padding: 28px 16px 48px;
+  }
+  .wrap { width: 100%; max-width: 440px; }
+  .note {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+  .modes {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+  .modes button, .mute {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: transparent;
+    border: 1px solid var(--line);
+    padding: 8px 10px;
+    cursor: pointer;
+  }
+  .modes button[aria-pressed="true"] {
+    color: var(--ink);
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .mute { margin-left: auto; }
+  .modes { align-items: center; }
+  .app {
+    background: var(--card);
+    border-left: 1px solid var(--line);
+    border-right: 1px solid var(--line);
+    min-height: 760px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+  }
+  .header, .tabs, .capture, .stack, .folds, .footer {
+    border-bottom: 1px solid var(--line);
+  }
+  .header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 14px 20px;
+  }
+  .title {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .title::before { content: "> "; color: var(--muted); }
+  .today {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+  .today b {
+    color: var(--accent);
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-shadow: 0 0 12px rgba(50, 209, 106, 0.3);
+  }
+  .today-dot { font-size: 16px; }
+  .today.bump b { animation: bump 0.45s ease; }
+  .tabs { display: flex; }
+  .tab {
+    min-width: 88px;
+    min-height: 48px;
+    padding: 0 16px;
+    background: transparent;
+    border: 0;
+    border-right: 1px solid var(--line);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    position: relative;
+  }
+  .tab.on { color: var(--accent); background: rgba(50, 209, 106, 0.08); }
+  .tab.on::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 2px;
+    background: var(--accent);
+  }
+  .capture {
+    padding: 12px 20px;
+    transition: max-height 0.35s ease, opacity 0.25s ease, padding 0.35s ease;
+    max-height: 80px;
+  }
+  .app.now .capture, .app.done .capture {
+    max-height: 0;
+    opacity: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    border-bottom-color: transparent;
+    pointer-events: none;
+  }
+  .capture input {
+    width: 100%;
+    background: transparent;
+    border: 0;
+    color: var(--text);
+    font: 14px/1.4 var(--font);
+    caret-color: var(--accent);
+    outline: none;
+  }
+  .capture input::placeholder { color: var(--muted); }
+  .stack { flex: 1; padding: 18px 20px 16px; border-bottom: 0; position: relative; }
+  .kicker {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .hero {
+    position: relative;
+    width: 100%;
+    text-align: left;
+    background: var(--top);
+    color: var(--text);
+    border: 1px solid var(--accent);
+    box-shadow: 0 0 0 1px rgba(50, 209, 106, 0.3), 0 0 20px rgba(50, 209, 106, 0.08);
+    padding: 18px 18px 16px 20px;
+    cursor: pointer;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--accent);
+  }
+  .hero.pulse { animation: nowIn 0.7s ease-out; }
+  .hero.leave { animation: drop 0.42s cubic-bezier(0.4, 0, 1, 1) forwards; }
+  .hero-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 10px;
+  }
+  .hero h2 {
+    font-size: 22px;
+    font-weight: 600;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+  }
+  .app.now .hero { padding: 28px 20px 22px; cursor: default; }
+  .app.now .hero h2 { font-size: 28px; line-height: 1.2; }
+  .clock {
+    display: none;
+    margin-top: 22px;
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 56px;
+    font-weight: 500;
+    letter-spacing: -0.03em;
+    color: var(--accent);
+    text-shadow: 0 0 18px rgba(50, 209, 106, 0.25);
+    align-items: center;
+    gap: 12px;
+  }
+  .app.now .clock { display: flex; cursor: pointer; }
+  .app.paused .clock { color: var(--muted); text-shadow: none; }
+  .app.paused .clock i { animation: none; opacity: 0.35; box-shadow: none; }
+  .app.done .clock { display: none; }
+  .app.done .receipt { display: none; }
+  .bank {
+    display: none;
+    margin-top: 18px;
+    font-family: var(--mono);
+    font-size: 28px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    color: var(--accent);
+    text-shadow: 0 0 18px rgba(50, 209, 106, 0.25);
+  }
+  .app.done .bank { display: block; }
+  .clock i {
+    width: 8px; height: 8px;
+    background: var(--accent);
+    box-shadow: 0 0 8px rgba(50, 209, 106, 0.8);
+    animation: blink 1.2s steps(2, start) infinite;
+    flex: none;
+  }
+  .hint {
+    margin-top: 16px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .app.now .hint { display: none; }
+  .rest {
+    margin-top: 18px;
+    transition: opacity 0.3s ease;
+  }
+  .app.now .rest-list, .app.done .rest-list { display: none; }
+  .waiting {
+    display: none;
+    margin-top: 22px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .app.now .waiting, .app.done .waiting { display: block; }
+  .row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 2px;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .row span:last-child { font-family: var(--mono); font-size: 11px; }
+  .done-btn {
+    margin-top: 18px;
+    width: 100%;
+    min-height: 48px;
+    background: var(--accent);
+    color: var(--ink);
+    border: 0;
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  .app:not(.now) .done-btn { display: none; }
+  .receipt {
+    position: absolute;
+    left: 20px; right: 20px;
+    top: 86px;
+    text-align: center;
+    font-family: var(--mono);
+    color: var(--accent);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-size: 13px;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .receipt.show { animation: receipt 1.15s ease forwards; }
+  .folds { border-top: 1px solid var(--line); }
+  .fold {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 14px 20px;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    text-align: left;
+  }
+  .count {
+    margin-left: 6px;
+    border: 1px solid var(--line-strong);
+    color: var(--accent);
+    padding: 1px 6px;
+    font-size: 11px;
+  }
+  .footer { display: flex; border-bottom: 0; }
+  .footer button {
+    flex: 1;
+    min-height: 52px;
+    background: transparent;
+    border: 0;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .footer button + button { border-left: 1px solid var(--line); }
+  .flash {
+    position: absolute;
+    right: 16px;
+    bottom: 16px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    opacity: 0;
+  }
+  .flash.on { animation: flash 1.4s ease; }
+  @keyframes blink { 50% { opacity: 0.2; } }
+  @keyframes nowIn {
+    0% { box-shadow: 0 0 0 1px rgba(50, 209, 106, 0.9), 0 0 28px rgba(50, 209, 106, 0.45); }
+    100% { box-shadow: 0 0 0 1px rgba(50, 209, 106, 0.3), 0 0 20px rgba(50, 209, 106, 0.08); }
+  }
+  @keyframes drop {
+    to { transform: translateY(36px) scale(0.98); opacity: 0; }
+  }
+  @keyframes receipt {
+    0% { opacity: 0; transform: translateY(8px); }
+    20% { opacity: 1; transform: none; }
+    75% { opacity: 1; }
+    100% { opacity: 0; transform: translateY(-6px); }
+  }
+  @keyframes bump {
+    0% { color: #fff; }
+    100% { color: var(--accent); }
+  }
+  @keyframes flash {
+    0% { opacity: 0; }
+    15% { opacity: 1; }
+    70% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <p class="note">Preview · 대기 / 집중 / 완료 한 박자</p>
+    <div class="modes">
+      <button type="button" id="m-rest" aria-pressed="true">대기</button>
+      <button type="button" id="m-now" aria-pressed="false">집중</button>
+      <button type="button" id="m-done" aria-pressed="false">완료 직후</button>
+      <button type="button" class="mute" id="mute" aria-pressed="false">소리 끔</button>
+    </div>
+    <main class="app" id="app">
+      <header class="header">
+        <div class="title">Task Stack</div>
+        <p class="today" id="today"><span>오늘</span> <b id="todayCount">3</b><span class="today-dot">·</span><b id="todayTime">47m</b></p>
+      </header>
+      <div class="tabs">
+        <button class="tab on" type="button">Work</button>
+        <button class="tab" type="button">Personal</button>
+      </div>
+      <form class="capture" id="capture">
+        <input id="captureInput" placeholder="떠오른 생각은 여기. 지금 일은 그대로" autocomplete="off" enterkeyhint="done">
+      </form>
+      <section class="stack">
+        <p class="kicker" id="kicker">Now</p>
+        <button class="hero" id="hero" type="button">
+          <div class="hero-label" id="heroLabel">눌러서 시작</div>
+          <h2 id="heroText">Review pull request #128</h2>
+          <div class="clock" id="clock"><i></i><span id="clockText">00:12:03</span></div>
+          <p class="hint" id="hint">시작은 이 카드. 아래 목록은 나중</p>
+          <p class="bank" id="bank">12:03 기록됨</p>
+        </button>
+        <p class="receipt" id="receipt">12:03 기록됨</p>
+        <div class="rest">
+          <div class="rest-list" id="restList"></div>
+          <p class="waiting" id="waiting">5 waiting</p>
+        </div>
+        <button class="done-btn" id="doneBtn" type="button">Complete</button>
+        <p class="flash" id="flash">스택에 넣음</p>
+      </section>
+      <div class="folds">
+        <button class="fold" type="button">Archive <span class="count">1</span></button>
+        <button class="fold" type="button">Completed <span class="count" id="doneCount">3</span></button>
+      </div>
+      <div class="footer">
+        <button type="button">Export</button>
+        <button type="button">Import</button>
+      </div>
+    </main>
+  </div>
+<script>
+const TASKS = [
+  "Review pull request #128",
+  "Reply to Dana about the Q3 schedule",
+  "Print the agenda",
+  "Book a meeting room for Thursday",
+  "Update the onboarding checklist",
+  "Submit the expense report"
+];
+const app = document.getElementById("app");
+const hero = document.getElementById("hero");
+const heroText = document.getElementById("heroText");
+const heroLabel = document.getElementById("heroLabel");
+const clockText = document.getElementById("clockText");
+const restList = document.getElementById("restList");
+const waiting = document.getElementById("waiting");
+const receipt = document.getElementById("receipt");
+const todayCount = document.getElementById("todayCount");
+const todayTime = document.getElementById("todayTime");
+const today = document.getElementById("today");
+const doneCount = document.getElementById("doneCount");
+const flash = document.getElementById("flash");
+const buttons = {
+  rest: document.getElementById("m-rest"),
+  now: document.getElementById("m-now"),
+  done: document.getElementById("m-done")
+};
+
+let index = 0;
+let todayMin = 47;
+let completed = 3;
+let mode = "rest";
+let paused = false;
+let timer = null;
+let elapsed = 12 * 60 + 3;
+let soundOn = false;
+let busy = false;
+
+function fmt(total) {
+  const s = Math.max(0, total | 0);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const p = (n) => String(n).padStart(2, "0");
+  return h > 0 ? `${p(h)}:${p(m)}:${p(sec)}` : `${p(m)}:${p(sec)}`;
+}
+function fmtSpan(mins) {
+  const m = Math.max(0, mins | 0);
+  if (m < 60) return m + "m";
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  return rem ? h + "h " + rem + "m" : h + "h";
+}
+function renderToday() {
+  todayCount.textContent = String(completed);
+  todayTime.textContent = fmtSpan(todayMin);
+  doneCount.textContent = String(completed);
+}
+function bankLabel(seconds) {
+  const m = Math.max(1, Math.round(seconds / 60));
+  return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
+}
+function renderList() {
+  const rest = TASKS.slice(index + 1);
+  restList.innerHTML = rest.map((text, i) =>
+    `<div class="row"><span>${text}</span><span>#${i + 2}</span></div>`
+  ).join("");
+  waiting.textContent = rest.length ? `${rest.length} waiting` : "stack clear";
+  heroText.textContent = TASKS[index] || "스택이 비었다";
+}
+function setPressed(next) {
+  mode = next;
+  app.classList.remove("now", "done");
+  if (next === "now") app.classList.add("now");
+  if (next === "done") app.classList.add("now", "done");
+  paused = false;
+  app.classList.remove("paused");
+  Object.entries(buttons).forEach(([name, btn]) => {
+    btn.setAttribute("aria-pressed", name === (next === "done" ? "done" : next) ? "true" : "false");
+  });
+  heroLabel.textContent = next === "rest" ? "눌러서 시작" : "지금";
+}
+function setPaused(on) {
+  if (mode !== "now") return;
+  paused = on;
+  app.classList.toggle("paused", on);
+  heroLabel.textContent = on ? "눌러서 이어하기" : "지금";
+  if (on) {
+    stopTick();
+    pauseTone();
+  } else startTick();
+}
+function stopTick() {
+  if (timer) clearInterval(timer);
+  timer = null;
+}
+function startTick() {
+  stopTick();
+  timer = setInterval(() => {
+    elapsed += 1;
+    clockText.textContent = fmt(elapsed);
+  }, 1000);
+}
+function show(next, opts = {}) {
+  stopTick();
+  setPressed(next);
+  if (next === "rest") {
+    elapsed = 0;
+    clockText.textContent = "00:00:00";
+  } else if (next === "now") {
+    elapsed = opts.live ? 0 : 12 * 60 + 3;
+    clockText.textContent = fmt(elapsed);
+    startTick();
+  } else {
+    elapsed = 0;
+    clockText.textContent = "00:00:00";
+    hero.classList.add("pulse");
+    receipt.textContent = "12:03 기록됨";
+    receipt.classList.remove("show");
+    void receipt.offsetWidth;
+    receipt.classList.add("show");
+  }
+  if (location.hash !== "#" + next) history.replaceState(null, "", "#" + next);
+}
+function tone(freq, seconds, peak) {
+  if (!soundOn) return;
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const o = ctx.createOscillator();
+  const g = ctx.createGain();
+  o.frequency.value = freq;
+  o.type = "triangle";
+  g.gain.setValueAtTime(0.0001, ctx.currentTime);
+  g.gain.exponentialRampToValueAtTime(peak, ctx.currentTime + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + seconds);
+  o.connect(g); g.connect(ctx.destination);
+  o.start();
+  o.stop(ctx.currentTime + seconds + 0.02);
+}
+function click() {
+  tone(620, 0.12, 0.08);
+}
+function pauseTone() {
+  tone(280, 0.16, 0.06);
+}
+function complete() {
+  if (busy || mode === "rest") return;
+  busy = true;
+  const gained = mode === "done" ? 12 * 60 + 3 : Math.max(elapsed, 1);
+  click();
+  hero.classList.remove("pulse");
+  hero.classList.add("leave");
+  setTimeout(() => {
+    todayMin += Math.max(1, Math.round(gained / 60));
+    completed += 1;
+    renderToday();
+    today.classList.remove("bump");
+    void today.offsetWidth;
+    today.classList.add("bump");
+    index = (index + 1) % TASKS.length;
+    renderList();
+    hero.classList.remove("leave");
+    hero.classList.add("pulse");
+    receipt.textContent = bankLabel(gained) + " 기록됨";
+    receipt.classList.remove("show");
+    void receipt.offsetWidth;
+    receipt.classList.add("show");
+    elapsed = 0;
+    clockText.textContent = "00:00:00";
+    setPressed("now");
+    startTick();
+    busy = false;
+  }, 420);
+}
+
+hero.addEventListener("click", () => {
+  if (mode === "rest") show("now", { live: true });
+});
+document.getElementById("clock").addEventListener("click", (e) => {
+  e.stopPropagation();
+  e.preventDefault();
+  if (mode !== "now" || busy) return;
+  setPaused(!paused);
+});
+document.getElementById("doneBtn").addEventListener("click", complete);
+buttons.rest.addEventListener("click", () => show("rest"));
+buttons.now.addEventListener("click", () => show("now"));
+buttons.done.addEventListener("click", () => {
+  index = 1;
+  todayMin = 59;
+  completed = 4;
+  renderToday();
+  renderList();
+  show("done");
+});
+document.getElementById("mute").addEventListener("click", (e) => {
+  soundOn = !soundOn;
+  e.currentTarget.setAttribute("aria-pressed", soundOn ? "true" : "false");
+  e.currentTarget.textContent = soundOn ? "소리 켬" : "소리 끔";
+});
+document.getElementById("capture").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const input = document.getElementById("captureInput");
+  const text = input.value.trim();
+  if (!text) return;
+  TASKS.splice(index + 1, 0, text);
+  input.value = "";
+  renderList();
+  flash.classList.remove("on");
+  void flash.offsetWidth;
+  flash.classList.add("on");
+});
+
+renderList();
+renderToday();
+const initial = new URLSearchParams(location.search).get("state")
+  || (location.hash || "#rest").slice(1);
+if (initial === "done") buttons.done.click();
+else if (initial === "now") show("now");
+else show("rest");
+</script>
+</body>
+</html>
