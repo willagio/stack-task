@@ -121,6 +121,11 @@ async function main() {
             await page.waitForTimeout(500);
         });
         await scene(phone, null, 'mobile-empty.png');
+        // 6. Phone: the user switched to Personal while the tomato ran; it is paused and the toast says so
+        await scene(phone, seedFocused(), 'mobile-switched.png', async page => {
+            await page.locator('.tab', { hasText: 'Personal' }).tap();
+            await page.waitForTimeout(500);
+        });
     } finally {
         await browser.close();
         server.close();

@@ -73,11 +73,12 @@ input {
     flex-direction: column;
 }
 
+/* The bottom padding is room for a toast of up to three lines, so the tools above it stay uncovered */
 .app {
     flex: 1;
     display: flex;
     flex-direction: column;
-    padding-bottom: calc(24px + env(safe-area-inset-bottom));
+    padding-bottom: calc(112px + env(safe-area-inset-bottom));
 }
 
 /* ---- Header ---- */
@@ -889,11 +890,12 @@ input {
 
 /* ---- Toast ---- */
 
-/* At the top: the bottom of the screen holds the tools, which a toast must not cover */
+/* At the bottom, within thumb reach: the top holds the category chips and the task to do now, which a toast
+   must not cover. The page keeps room below its tools (.app padding) so a toast does not cover them either. */
 .toast {
     position: fixed;
     left: 50%;
-    top: max(12px, env(safe-area-inset-top));
+    bottom: calc(12px + env(safe-area-inset-bottom));
     transform: translateX(-50%);
     z-index: 20;
     display: flex;
@@ -1057,7 +1059,7 @@ input {
 @keyframes toastIn {
     from {
         opacity: 0;
-        transform: translate(-50%, -8px);
+        transform: translate(-50%, 8px);
     }
     to {
         opacity: 1;

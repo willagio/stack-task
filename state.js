@@ -188,6 +188,29 @@
         return paused;
     }
 
+    // The first screen shows the top task of the current category, so a running timer has to be in that
+    // category. With `follow` (nobody chose a category: a load, another tab, an import) the current category
+    // moves to the running timer. Any timer still outside the current category (the user switched away from it)
+    // is paused with its time kept. Returns { followed, paused }.
+    function keepTimerInView(state, now, follow) {
+        const at = now === undefined ? Date.now() : now;
+        const running = state.tasks.filter(isRunning);
+        let followed = false;
+        if (follow && running.length > 0 && !running.some(task => task.category === state.currentCategory)
+            && state.categories.includes(running[0].category)) {
+            state.currentCategory = running[0].category;
+            followed = true;
+        }
+        const paused = [];
+        state.tasks = state.tasks.map(task => {
+            if (!isRunning(task) || task.category === state.currentCategory) return task;
+            const next = settled(task, at);
+            paused.push(next);
+            return next;
+        });
+        return { followed, paused };
+    }
+
     function runningTask(state) {
         return state.tasks.find(isRunning) || null;
     }
@@ -445,6 +468,7 @@
         isRipe,
         settleRipe,
         pauseBuried,
+        keepTimerInView,
         runningTask,
         startTimer,
         pauseTimer,

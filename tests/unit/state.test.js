@@ -204,6 +204,41 @@ test('validateCategoryName is exposed and ignores the category being renamed', (
     assert.equal(State.validateCategoryName(s, '  ', null).ok, false);
 });
 
+test('keepTimerInView: the view follows a running timer, or a timer left outside the view is paused', () => {
+    const MIN = 60 * 1000;
+    const T0 = Date.parse('2026-10-10T09:00:00.000Z');
+    const running = (id, category) => ({ text: id, id, category, timeSpent: MIN, timerStartedAt: new Date(T0).toISOString() });
+    const make = (tasks, currentCategory) => State.createState({ tasks, categories: ['Work', 'Personal'], currentCategory });
+    // follow: the current category moves to the timer, which keeps running
+    const followed = make([running('w', 'Work')], 'Personal');
+    assert.deepEqual(State.keepTimerInView(followed, T0 + 5 * MIN, true), { followed: true, paused: [] });
+    assert.equal(followed.currentCategory, 'Work');
+    assert.ok(State.isRunning(followed.tasks[0]));
+    // no follow (the user switched away): paused with its time kept, the category stays
+    const left = make([running('w', 'Work')], 'Personal');
+    const result = State.keepTimerInView(left, T0 + 5 * MIN, false);
+    assert.equal(result.followed, false);
+    assert.deepEqual(result.paused.map(t => t.id), ['w']);
+    assert.equal(left.currentCategory, 'Personal');
+    assert.equal(State.isRunning(left.tasks[0]), false);
+    assert.equal(left.tasks[0].timeSpent, 6 * MIN);
+    // a timer already in view, or none at all: nothing changes either way
+    for (const follow of [true, false]) {
+        const inView = make([running('w', 'Work')], 'Work');
+        assert.deepEqual(State.keepTimerInView(inView, T0, follow), { followed: false, paused: [] });
+        assert.ok(State.isRunning(inView.tasks[0]));
+        const idle = make([{ text: 'i', id: 'i', category: 'Work' }], 'Personal');
+        assert.deepEqual(State.keepTimerInView(idle, T0, follow), { followed: false, paused: [] });
+        assert.equal(idle.currentCategory, 'Personal');
+    }
+    // broken data with two timers: the one in view keeps running, the other is paused
+    const two = make([running('w', 'Work'), running('p', 'Personal')], 'Work');
+    const both = State.keepTimerInView(two, T0 + MIN, true);
+    assert.equal(two.currentCategory, 'Work');
+    assert.deepEqual(both.paused.map(t => t.id), ['p']);
+    assert.ok(State.isRunning(two.tasks[0]));
+});
+
 test('settleRipe: a timer the page was watching is recorded at its boundary however late; one met first keeps it all', () => {
     const MIN = 60 * 1000;
     const T0 = Date.parse('2026-10-10T09:00:00.000Z');

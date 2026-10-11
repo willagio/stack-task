@@ -79,7 +79,8 @@
             this.renderer = Render.create(this.doc, this.refs, { isRipe: task => this.isShownRipe(task) });
 
             this.loadFromStorage();
-            // A timer that ran past its tomato while the page was closed is stopped now, with its time kept
+            // A timer that ran past its tomato while the page was closed is stopped now, with its time kept;
+            // one still running in another category opens that category, so the first screen shows it
             if (this.reconcile(Date.now())) this.save();
             this.startupNotices.push(...this.notes.splice(0));
             this.lateNotice = false;
@@ -163,14 +164,20 @@
         //  - a timer past its tomato boundary is stopped (never completed). One this page was running is
         //    recorded at exactly the boundary; one met for the first time keeps all the time it logged
         //  - a running timer whose task is no longer on top of its category is paused
+        //  - a running timer is always on the first screen: when the user switches to another category
+        //    (options.switched) it is paused; otherwise (a load, another tab, an import) the view follows it
+        // options.completing: the id of a task about to be done, whose own note would only repeat what Done says.
         // Returns true when it changed something; what to tell the user is collected in this.notes.
 
-        reconcile(now) {
+        reconcile(now, options) {
+            const opts = options || {};
             const ripened = State.settleRipe(this.state, now, task => this.watching.has(timerKey(task)));
             const paused = State.pauseBuried(this.state, now);
+            const view = State.keepTimerInView(this.state, now, !opts.switched);
             ripened.forEach(({ task, late, kept }) => {
+                if (kept) this.ripeAt.set(String(task.id), task.timeSpent);
+                if (opts.completing != null && State.sameId(task.id, opts.completing)) return;
                 if (kept) {
-                    this.ripeAt.set(String(task.id), task.timeSpent);
                     this.notes.push(`${quote(task.text)} ran past its tomato while you were away. Timer stopped; all ${State.formatDuration(State.elapsedMs(task))} kept.`);
                 } else if (late > LATE_NOTICE_MS) {
                     this.lateNotice = true;
@@ -181,8 +188,11 @@
                 }
             });
             paused.forEach(task => this.notes.push(`Paused ${quote(task.text)} — new thing on top.`));
+            view.paused.forEach(task => this.notes.push(opts.switched
+                ? `Paused ${quote(task.text)} — switched to ${this.state.currentCategory}.`
+                : `Paused ${quote(task.text)} — one timer at a time.`));
             this.state.tasks.forEach(task => { if (State.isRunning(task)) this.watching.add(timerKey(task)); });
-            return ripened.length + paused.length > 0;
+            return view.followed || ripened.length + paused.length + view.paused.length > 0;
         }
 
         // Paused on a boundary, or stopped past one on load in this session (with its time unchanged since)
@@ -193,12 +203,14 @@
         }
 
         // Announces a message together with any timer notes collected since the last one.
-        // A tomato that ripened unseen (a background tab) is shown in a toast as well, once the page is visible.
-        say(message) {
+        // A tomato that ripened unseen (a background tab) is shown in a toast as well, once the page is visible,
+        // and so is anything with `toast` set (news about a task the first screen no longer shows).
+        say(message, toast) {
             const extra = this.notes.splice(0).join(' ');
             const text = extra ? `${message} ${extra}`.trim() : message;
-            const show = this.lateNotice;
+            const show = this.lateNotice || !!toast;
             this.lateNotice = false;
+            if (!text) return;
             if (show && !this.doc.hidden) {
                 this.ui.notify(text);
                 return;
@@ -543,7 +555,8 @@
 
         popTask() {
             const now = Date.now();
-            this.reconcile(now);
+            // A tomato that ripens on this very click needs no "Ripe!" of its own: Done says its time
+            this.reconcile(now, { completing: this.topId() });
             const index = State.topTaskIndex(this.state);
             if (index === -1) return;
             const task = this.state.tasks[index];
@@ -686,10 +699,13 @@
             if (newName) this.renameCategory(oldName, newName);
         }
 
+        // A new category is opened at once, so a running timer is left behind: it is paused, as on a tab switch
         createCategory(name) {
+            const running = State.runningTask(this.state);
             if (this.report(State.createCategory(this.state, name))) {
+                this.reconcile(Date.now(), { switched: true });
                 this.commit();
-                this.say(`Category ${quote(this.state.currentCategory)} added.`);
+                this.say(`Category ${quote(this.state.currentCategory)} added.`, !!running);
             }
         }
 
@@ -707,8 +723,15 @@
             this.withUndo(`Deleted category ${quote(name)}${detail}.`, () => State.deleteCategory(this.state, name));
         }
 
+        // A running timer stays on the first screen: switching away from its task pauses it (or ripens it, if its
+        // tomato is already up), and a toast says so. Start on the way back carries on from the time kept.
         switchCategory(name) {
-            if (name !== this.state.currentCategory && State.switchCategory(this.state, name).ok) this.commit();
+            if (name === this.state.currentCategory) return;
+            const running = State.runningTask(this.state);
+            if (!State.switchCategory(this.state, name).ok) return;
+            this.reconcile(Date.now(), { switched: true });
+            this.commit();
+            if (running) this.say('', true);
         }
 
         // ---- Export / import ----------------------------------------------

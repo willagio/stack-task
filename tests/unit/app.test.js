@@ -15,7 +15,7 @@ const original = JSON.parse(fs.readFileSync(path.join(ROOT, 'tests/fixtures/orig
 function boot(initialStorage, dialogs, clock) {
     const document = new FakeDocument();
     buildPage(document);
-    const log = { alerts: [], confirms: [], prompts: [], errors: [], downloads: [], timers: [], ticks: [] };
+    const log = { alerts: [], confirms: [], prompts: [], errors: [], downloads: [], timers: [], ticks: [], listeners: {} };
     // A controllable clock: the scripts under test see it as Date
     const time = clock || { now: Date.now() };
     class FakeDate extends Date {
@@ -35,7 +35,7 @@ function boot(initialStorage, dialogs, clock) {
         setInterval: fn => { log.ticks.push(fn); return log.ticks.length; },
         clearInterval() {},
         Date: FakeDate,
-        addEventListener() {},
+        addEventListener: (type, fn) => { (log.listeners[type] = log.listeners[type] || []).push(fn); },
         Blob: class { constructor(parts) { this.parts = parts; } },
         URL: { createObjectURL: blob => { log.downloads.push(blob.parts.join('')); return 'blob:x'; }, revokeObjectURL() {} }
     };
@@ -47,6 +47,11 @@ function boot(initialStorage, dialogs, clock) {
     const $ = id => document.getElementById(id);
     return { win, document, log, localStorage, $, time,
         tick: () => log.ticks.at(-1)(),
+        // Another tab wrote `raw` to fileDB
+        storageEvent(raw) {
+            localStorage.setItem('fileDB', raw);
+            (log.listeners.storage || []).forEach(fn => fn({ storageArea: localStorage, key: 'fileDB' }));
+        },
         stored: () => JSON.parse(localStorage.getItem('fileDB')),
         add(text) { $('taskInput').value = text; $('taskInput').dispatch('keydown', { key: 'Enter' }); },
         topText: () => ($('heroTask').hidden ? null : $('heroText').textContent),
@@ -765,7 +770,9 @@ test('Done, Archive or Undo right after the boundary record the tomato at 25:00,
     done.time.now += 25 * MIN + 40 * 1000;
     done.$('popButton').click();
     assert.equal(done.stored().completed[0].timeSpent, 25 * MIN);
-    assert.match(done.toast().text, /^Done "do it" in 25m\. Next tomato! Ripe! "do it" — 25 minutes done\. The timer stopped at 25:00\.$/);
+    // one note, not two: Done already says the 25 minutes, so the tomato's own "Ripe!" note is left out
+    assert.equal(done.toast().text, 'Done "do it" in 25m. Next tomato!');
+    assert.equal(done.live(), 'Done "do it" in 25m. Next tomato!');
     assert.equal(done.toast().canUndo, true);
     // Undo brings it back ripe, not running again
     done.$('toastAction').click();
@@ -802,15 +809,176 @@ test('a running timer is paused when something else becomes the top task', () =>
     assert.match(app.live(), /Paused "second" — new thing on top\./);
     assert.equal(app.$('timerLabel').textContent, 'Start');
     assert.equal(app.rows().filter(r => r.querySelector('.timer-btn')).length, 0);
-    // a timer on another category's top task keeps running
+    // switching to another category pauses it too: a running timer is never off the first screen
     app.$('timerButton').click();                          // runs "urgent"
+    app.time.now += 3 * MIN;
     app.tab('Personal').click();
-    assert.ok(app.stored().tasks.find(t => t.text === 'urgent').timerStartedAt);
-    assert.match(app.document.title, /^\d\d:\d\d · urgent$/);
+    const urgent = app.stored().tasks.find(t => t.text === 'urgent');
+    assert.equal('timerStartedAt' in urgent, false);
+    assert.equal(urgent.timeSpent, 3 * MIN);
+    assert.equal(app.toast().text, 'Paused "urgent" — switched to Personal.');
+    assert.equal(app.document.title, 'One Tomato');
     // old data that has a timer on a buried task is fixed up on load
     const old = boot({ fileDB: db([task('under', 'u', { timerStartedAt: iso(T0 - 2 * MIN) }), task('over', 'v')]) }, null, { now: T0 });
     assert.equal('timerStartedAt' in old.stored().tasks[0], false);
     assert.equal(old.stored().tasks[0].timeSpent, 2 * MIN);
+});
+
+// ---- A running timer is always on the first screen ---------------------------------------------
+
+const personal = (text, id, fields) => task(text, id, { category: 'Personal', ...fields });
+
+test('switching to another category pauses the running timer, keeps its time, says so, and Start carries on', () => {
+    const app = boot({ fileDB: db([task('first', 'a'), task('second', 'b')]) }, null, { now: T0 });
+    app.$('timerButton').click();
+    app.time.now += 7 * MIN;
+    app.tab('Personal').click();
+    assert.equal(app.topText(), null);
+    assert.equal(app.$('emptyTitle').textContent, 'Empty plate.');
+    const second = app.stored().tasks[1];
+    assert.equal('timerStartedAt' in second, false);
+    assert.equal(second.timeSpent, 7 * MIN);
+    assert.equal(app.stored().currentCategory, 'Personal');
+    assert.equal(app.toast().hidden, false, 'the first screen no longer shows it: a toast says so');
+    assert.equal(app.toast().text, 'Paused "second" — switched to Personal.');
+    assert.equal(app.toast().canUndo, false);
+    assert.equal(app.live(), 'Paused "second" — switched to Personal.');
+    assert.equal(app.document.title, 'One Tomato');
+    // back on Work it waits, half-ripe, with every minute kept
+    app.time.now += 3 * MIN;
+    app.tab('Work').click();
+    assert.equal(app.topText(), 'second');
+    assert.equal(app.$('heroClock').textContent, '18:00');
+    assert.equal(app.$('heroStatus').textContent, 'Half-ripe. Keep going?');
+    assert.equal(app.$('timerLabel').textContent, 'Start');
+    // Start counts on from 7 minutes
+    app.$('timerButton').click();
+    app.time.now += 2 * MIN;
+    app.tick();
+    assert.equal(app.$('heroClock').textContent, '16:00');
+    assert.equal(app.document.title, '16:00 · second');
+    // switching with no timer running says nothing
+    app.$('timerButton').click();
+    const quiet = boot({ fileDB: db([task('idle', 'i')]) }, null, { now: T0 });
+    quiet.tab('Personal').click();
+    assert.equal(quiet.toast().hidden, true);
+});
+
+test('switching after the boundary, before the late tick, ripens the tomato at 25:00 instead of pausing it', () => {
+    const app = boot({ fileDB: db([task('ripe one', 'r')]) }, null, { now: T0 });
+    app.$('timerButton').click();
+    app.time.now += 25 * MIN + 40 * 1000;                  // no tick since the boundary
+    app.tab('Personal').click();
+    const stored = app.stored().tasks[0];
+    assert.equal(stored.timeSpent, 25 * MIN, 'recorded at the boundary, not at the time of the click');
+    assert.equal('timerStartedAt' in stored, false);
+    assert.equal(app.toast().hidden, false);
+    assert.equal(app.toast().text, 'Ripe! "ripe one" — 25 minutes done. The timer stopped at 25:00.');
+    app.tab('Work').click();
+    assert.equal(app.$('heroStatus').textContent, 'Ripe! Take five, then Done — or one more?');
+    assert.equal(app.$('timerLabel').textContent, 'One more');
+    // a second before the boundary it is only paused, at 24:59
+    const early = boot({ fileDB: db([task('nearly', 'n')]) }, null, { now: T0 });
+    early.$('timerButton').click();
+    early.time.now += 25 * MIN - 1000;
+    early.tab('Personal').click();
+    assert.equal(early.stored().tasks[0].timeSpent, 25 * MIN - 1000);
+    assert.equal(early.toast().text, 'Paused "nearly" — switched to Personal.');
+});
+
+test('the keyboard switch (arrows, Home, End) pauses the running timer just the same', () => {
+    for (const keyName of ['ArrowRight', 'ArrowLeft', 'End']) {
+        const app = boot({ fileDB: db([task('keys', 'k')]) }, null, { now: T0 });
+        app.$('timerButton').click();
+        app.time.now += 5 * MIN;
+        app.tabButton('Work').focus();
+        app.tabButton('Work').dispatch('keydown', { key: keyName });
+        assert.equal(app.stored().currentCategory, 'Personal', keyName);
+        assert.equal('timerStartedAt' in app.stored().tasks[0], false, keyName);
+        assert.equal(app.stored().tasks[0].timeSpent, 5 * MIN, keyName);
+        assert.equal(app.toast().text, 'Paused "keys" — switched to Personal.', keyName);
+        assert.equal(app.document.activeElement.dataset.category, 'Personal', 'focus stays on the tabs');
+    }
+});
+
+test('a new category opens at once, so it pauses the running timer and says so', async () => {
+    const app = boot({ fileDB: db([task('busy', 'b')]) }, { prompt: 'Errands' }, { now: T0 });
+    app.$('timerButton').click();
+    app.time.now += 4 * MIN;
+    app.$('addCategoryBtn').click();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(app.stored().currentCategory, 'Errands');
+    assert.equal('timerStartedAt' in app.stored().tasks[0], false);
+    assert.equal(app.stored().tasks[0].timeSpent, 4 * MIN);
+    assert.equal(app.toast().text, 'Category "Errands" added. Paused "busy" — switched to Errands.');
+});
+
+test('on load, a timer running in another category opens that category and keeps running', () => {
+    const raw = db([task('work top', 'w', { timerStartedAt: iso(T0 - 5 * MIN) }), personal('home', 'p')], { currentCategory: 'Personal' });
+    const app = boot({ fileDB: raw }, null, { now: T0 });
+    assert.equal(app.topText(), 'work top');
+    assert.equal(app.$('heroClock').textContent, '20:00');
+    assert.equal(app.$('timerLabel').textContent, 'Pause');
+    assert.equal(app.tabButton('Work').getAttribute('aria-selected'), 'true');
+    assert.equal(app.document.title, '20:00 · work top');
+    assert.equal(app.toast().hidden, true, 'nothing to report: it is simply shown');
+    const stored = app.stored();
+    assert.equal(stored.currentCategory, 'Work');
+    assert.equal(stored.tasks[0].timerStartedAt, iso(T0 - 5 * MIN), 'still running, from the same start');
+    assert.equal('timeSpent' in stored.tasks[0], false);
+    app.time.now += MIN;
+    app.tick();
+    assert.equal(app.$('heroClock').textContent, '19:00');
+    // past its tomato on load: stopped with every minute kept, as before, and shown where it is
+    const away = boot({ fileDB: db([task('long gone', 'l', { timerStartedAt: iso(T0 - 185 * MIN) }), personal('home', 'p')], { currentCategory: 'Personal' }) }, null, { now: T0 });
+    assert.equal(away.stored().tasks[0].timeSpent, 185 * MIN);
+    assert.equal(away.stored().currentCategory, 'Personal', 'nothing runs any more, so nothing to follow');
+    assert.equal(away.topText(), 'home');
+});
+
+test('another tab, or an import, with a timer outside its current category: the view follows the timer', async () => {
+    const app = boot({ fileDB: db([task('here', 'h')]) }, null, { now: T0 });
+    assert.equal(app.topText(), 'here');
+    app.storageEvent(db([task('here', 'h'), personal('there', 't', { timerStartedAt: iso(T0 - 2 * MIN) })]));
+    assert.equal(app.topText(), 'there');
+    assert.equal(app.$('heroClock').textContent, '23:00');
+    assert.equal(app.$('timerLabel').textContent, 'Pause');
+    assert.equal(app.stored().currentCategory, 'Personal');
+    assert.equal(app.stored().tasks[1].timerStartedAt, iso(T0 - 2 * MIN), 'not paused');
+    // the other tab switched away (and so paused it): this one follows that too
+    app.storageEvent(db([task('here', 'h'), personal('there', 't', { timeSpent: 3 * MIN })], { currentCategory: 'Work' }));
+    assert.equal(app.topText(), 'here');
+    assert.equal(app.document.title, 'One Tomato');
+
+    const imported = boot({ fileDB: db([task('mine', 'm')]) }, null, { now: T0 });
+    await importFile(imported, db([task('theirs', 'x', { timerStartedAt: iso(T0 - MIN) }), personal('p', 'p')], { currentCategory: 'Personal' }));
+    assert.equal(imported.topText(), 'theirs');
+    assert.equal(imported.$('timerLabel').textContent, 'Pause');
+    assert.equal(imported.stored().currentCategory, 'Work');
+    assert.ok(imported.stored().tasks[0].timerStartedAt);
+});
+
+test('deleting, renaming and undoing a category never leaves a running timer off the first screen', async () => {
+    const app = boot({ fileDB: db([task('on it', 'o'), personal('later', 'l')]) }, { prompt: 'Office' }, { now: T0 });
+    app.$('timerButton').click();
+    app.time.now += 3 * MIN;
+    app.$('renameCategoryBtn').click();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(app.topText(), 'on it');
+    assert.equal(app.$('timerLabel').textContent, 'Pause');
+    assert.equal(app.stored().currentCategory, 'Office');
+    assert.ok(app.stored().tasks[0].timerStartedAt);
+    // deleting the category deletes the running task with it; Undo brings both back, still running
+    app.$('deleteCategoryBtn').click();
+    assert.equal(app.stored().tasks.some(t => t.timerStartedAt), false);
+    assert.equal(app.topText(), 'later');
+    assert.equal(app.document.title, 'One Tomato');
+    app.time.now += MIN;
+    app.$('toastAction').click();
+    assert.equal(app.stored().currentCategory, 'Office');
+    assert.equal(app.topText(), 'on it');
+    assert.equal(app.$('timerLabel').textContent, 'Pause');
+    assert.equal(app.$('heroClock').textContent, '21:00');
 });
 
 test('the clean-plate screen counts today\'s finished tasks and their ripe tomatoes', () => {

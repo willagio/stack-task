@@ -410,11 +410,15 @@ test.describe('phone-sized touch viewport', () => {
         await page.locator('#taskStack .task-item', { hasText: 'call the bank' }).locator('.move-up-btn').tap();
         await expect(topTask(page)).toHaveText('call the bank');
 
-        // the toast sits at the top and does not cover the tools at the bottom
+        // the toast sits at the bottom and does not cover the tools there (see also the 390px toast test below)
         await page.locator('#popButton').tap();
         const toast = await page.locator('#toast').boundingBox();
         const footer = await page.locator('#exportBtn').boundingBox();
-        expect(toast.y + toast.height).toBeLessThanOrEqual(footer.y + 1);
+        expect(footer.y + footer.height).toBeLessThanOrEqual(toast.y + 1);
+        for (const tool of await page.locator('.tools button').all()) {
+            const box = await tool.boundingBox();
+            expect(box.y + box.height <= toast.y + 1 || box.y >= toast.y + toast.height - 1, 'tool clear of the toast').toBe(true);
+        }
     });
 });
 
@@ -798,6 +802,128 @@ test('time already logged by the old count-up timer becomes tomatoes and time le
     await expect(page.locator('#heroTally svg')).toHaveCount(1);
     const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('fileDB')).tasks[0].timeSpent);
     expect(stored).toBe(37 * MIN);
+});
+
+// ---- A running timer is always on the first screen ----------------------------------------------
+
+const workAndPersonal = (work, personal, extra) => JSON.stringify({
+    tasks: [...work.map((t, i) => ({ id: 'w' + i, category: 'Work', createdAt: '2026-10-10T08:00:00.000Z', ...t })),
+        ...personal.map((t, i) => ({ id: 'p' + i, category: 'Personal', createdAt: '2026-10-10T08:00:00.000Z', ...t }))],
+    completed: [], archived: [], categories: ['Work', 'Personal'], currentCategory: 'Work', ...extra
+});
+const storedTasks = page => page.evaluate(() => JSON.parse(localStorage.getItem('fileDB')).tasks);
+const boxesOverlap = (a, b) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+
+// Work's timer runs for 4 minutes, the user goes to Personal (by tap or keyboard), waits, comes back and starts again
+async function switchAwayAndBack(page, how) {
+    await page.clock.install({ time: new Date(T_START) });
+    await seed(page, workAndPersonal([{ text: 'write the report' }], [{ text: 'water the plants' }]));
+    await page.locator('#timerButton').click();
+    await page.clock.runFor(4 * MIN);
+    await expect(page.locator('#heroClock')).toHaveText('21:00');
+
+    if (how === 'tap') {
+        await page.locator('.tab', { hasText: 'Personal' }).tap();
+    } else {
+        await page.locator('[role=tab][aria-selected=true]').focus();
+        await page.keyboard.press('ArrowRight');
+        await expect(page.locator('[role=tab][aria-selected=true]')).toBeFocused();
+    }
+    await expect(page.locator('[role=tab][aria-selected=true]')).toHaveText('Personal');
+    await expect(topTask(page)).toHaveText('water the plants');
+    await expect(page.locator('#toast')).toBeVisible();
+    await expect(page.locator('#toastMessage')).toHaveText('Paused "write the report" — switched to Personal.');
+    await expect(page.locator('#liveRegion')).toHaveText('Paused "write the report" — switched to Personal.');
+    await expect(page).toHaveTitle('One Tomato');
+    const work = (await storedTasks(page)).find(t => t.text === 'write the report');
+    expect(work.timerStartedAt).toBeUndefined();
+    expect(work.timeSpent).toBeGreaterThanOrEqual(4 * MIN);                // the installed clock still flows a little
+    expect(work.timeSpent).toBeLessThan(4 * MIN + 5000);
+    // the toast leaves the chips free, so going back is one tap away
+    const toast = await page.locator('#toast').boundingBox();
+    for (const chip of await page.locator('.tab').all()) expect(boxesOverlap(toast, await chip.boundingBox())).toBe(false);
+
+    await page.clock.runFor(3 * MIN);                                      // paused: no time is added
+    if (how === 'tap') {
+        await page.locator('.tab', { hasText: 'Work' }).tap();
+        await expect(page.locator('#heroClock')).toHaveText('21:00');
+        await page.locator('#timerButton').tap();
+    } else {
+        await page.keyboard.press('ArrowLeft');
+        await expect(topTask(page)).toHaveText('write the report');
+        await expect(page.locator('#heroClock')).toHaveText('21:00');
+        await page.keyboard.press('Tab');                                  // tab -> the task text -> Start
+        await page.keyboard.press('Tab');
+        await expect(page.locator('#timerButton')).toBeFocused();
+        await page.keyboard.press('Enter');
+    }
+    await expect(topTask(page)).toHaveText('write the report');
+    await expect(page.locator('#heroStatus')).toHaveText('Ripening…');
+    await page.clock.runFor(2 * MIN);
+    await expect(page.locator('#heroClock')).toHaveText('19:00');
+    await expect(page).toHaveTitle('19:00 · write the report');
+}
+
+test.describe('phone 390x844, touch', () => {
+    test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    test('switching category with a tap pauses the running timer, keeps its time, and Start carries on', async ({ page }) => {
+        await switchAwayAndBack(page, 'tap');
+    });
+});
+
+test('switching category with the keyboard only pauses the running timer the same way (390x844)', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await switchAwayAndBack(page, 'keyboard');
+});
+
+test('opening the app with a timer running in another category shows that task and its time, still running (390x844)', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.clock.install({ time: new Date(T_START) });
+    const raw = workAndPersonal([{ text: 'deep work', timerStartedAt: new Date(T_START - 5 * MIN).toISOString() }], [{ text: 'call mum' }],
+        { currentCategory: 'Personal' });
+    await seed(page, raw);
+    await expect(topTask(page)).toHaveText('deep work');
+    await expect(page.locator('[role=tab][aria-selected=true]')).toHaveText('Work');
+    await expect(page.locator('#heroClock')).toHaveText(/^(20:00|19:5\d)$/);
+    await expect(page.locator('#timerButton')).toContainText('Pause');
+    await expect(page.locator('#heroStatus')).toHaveText('Ripening…');
+    for (const selector of ['#heroText', '#heroClock', '#timerButton', '#popButton']) await expect(page.locator(selector)).toBeInViewport({ ratio: 1 });
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('fileDB')));
+    expect(stored.currentCategory).toBe('Work');
+    expect(stored.tasks.find(t => t.text === 'deep work').timerStartedAt).toBe(new Date(T_START - 5 * MIN).toISOString());
+    await page.clock.runFor(60 * 1000);
+    await expect(page.locator('#heroClock')).toHaveText(/^(19:00|18:5\d)$/);
+});
+
+for (const [width, height] of [[390, 844], [390, 667]]) {
+    test(`right after Done the toast covers neither the category chips nor Start / Done, nor the tools (${width}x${height})`, async ({ page }) => {
+        await page.setViewportSize({ width, height });
+        await seed(page, seedTasks(['Print the agenda', 'Reply to Dana about the Q3 schedule', 'Review pull request #128']));
+        await page.locator('#popButton').click();
+        await expect(page.locator('#toastMessage')).toHaveText('Done "Review pull request #128". Next tomato!');
+        const toast = await page.locator('#toast').boundingBox();
+        expect(toast.y + toast.height).toBeLessThanOrEqual(height);
+        const chips = await page.locator('.tab').all();
+        expect(chips.length).toBe(2);
+        for (const chip of chips) expect(boxesOverlap(toast, await chip.boundingBox()), 'a category chip').toBe(false);
+        for (const selector of ['#heroText', '#heroClock', '#timerButton', '#popButton']) {
+            expect(boxesOverlap(toast, await page.locator(selector).boundingBox()), selector).toBe(false);
+        }
+        // scrolled to the end, the tools sit above the toast
+        await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+        await expect(page.locator('#toast')).toBeVisible();
+        const after = await page.locator('#toast').boundingBox();
+        for (const tool of await page.locator('.tools button').all()) {
+            expect(boxesOverlap(after, await tool.boundingBox()), await tool.textContent()).toBe(false);
+        }
+    });
+}
+
+test('a late Done after the boundary says it in one note', async ({ page }) => {
+    await startNearBoundary(page, 'one note');
+    await jumpWithoutTick(page, T_START + 25 * MIN + 40 * 1000);
+    await page.locator('#popButton').click();
+    await expect(page.locator('#toastMessage')).toHaveText('Done "one note" in 25m. Plate\'s clean!');
 });
 
 test('reduced motion: the next task appears with no entrance animation', async ({ page }) => {
