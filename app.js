@@ -528,7 +528,9 @@
             input.setAttribute('autocomplete', 'off');
             input.setAttribute('enterkeyhint', 'done');
             item.classList.add('editing');
-            textNode.hidden = true;
+            // The hero keeps its text in place (hidden by CSS, not removed) so nothing below it shifts
+            // between the mouse going down on Done and coming up
+            if (!isHero) textNode.hidden = true;
             textNode.parentNode.insertBefore(input, textNode);
 
             let done = false;

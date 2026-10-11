@@ -42,7 +42,7 @@ function seed() {
 }
 
 async function open(browser, contextOptions, data) {
-    const context = await browser.newContext({ deviceScaleFactor: 2, colorScheme: 'dark', ...contextOptions });
+    const context = await browser.newContext({ deviceScaleFactor: 2, colorScheme: 'light', ...contextOptions });
     const page = await context.newPage();
     const problems = [];
     page.on('console', msg => { if (msg.type() === 'error') problems.push(msg.text()); });
@@ -57,6 +57,14 @@ async function open(browser, contextOptions, data) {
     return { context, page, problems };
 }
 
+// The hero task is 10 minutes into its tomato
+function seedFocused() {
+    const data = seed();
+    const top = data.tasks.findIndex(t => t.id === 'w6');
+    data.tasks[top] = { ...data.tasks[top], timerStartedAt: new Date(Date.now() - 10 * MIN).toISOString() };
+    return data;
+}
+
 async function main() {
     const server = createServer();
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -67,45 +75,43 @@ async function main() {
     let problems = [];
 
     try {
-        const desktop = { baseURL, viewport: { width: 640, height: 860 } };
+        const desktop = { baseURL, viewport: { width: 1280, height: 800 } };
+        const phone = { baseURL, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true };
         const shot = async (page, name) => {
             const file = path.join(OUT, name);
             await page.screenshot({ path: file });
             written.push(file);
         };
+        const scene = async (contextOptions, data, name, act) => {
+            const s = await open(browser, contextOptions, data);
+            if (act) await act(s.page);
+            await shot(s.page, name);
+            problems = problems.concat(s.problems);
+            await s.context.close();
+        };
 
-        // 1. Default screen: nothing saved yet
-        let s = await open(browser, desktop, null);
-        await shot(s.page, 'empty.png');
-        problems = problems.concat(s.problems);
-        await s.context.close();
-
-        // 2. Several stacked tasks; the newest one is the focus. Hover shows the row actions;
-        //    the hovered row has short text so the buttons do not cover any of it.
-        s = await open(browser, desktop, seed());
-        await s.page.locator('#taskStack .task-item').nth(2).hover();
-        await s.page.waitForTimeout(400); // let the hover transition finish
-        await shot(s.page, 'stack.png');
-        problems = problems.concat(s.problems);
-        await s.context.close();
-
-        // 3. Completed list expanded, with the Undo toast from completing a task
-        s = await open(browser, { baseURL, viewport: { width: 640, height: 1000 } }, seed());
-        await s.page.locator('#popButton').click();
-        await s.page.locator('.completed-section .section-toggle').click();
-        await s.page.mouse.move(5, 5);
-        await s.page.waitForTimeout(400); // let the toast finish animating in
-        await shot(s.page, 'completed.png');
-        problems = problems.concat(s.problems);
-        await s.context.close();
-
-        // 4. Phone-sized touch viewport
-        s = await open(browser, {
-            baseURL, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true
-        }, seed());
-        await shot(s.page, 'mobile.png');
-        problems = problems.concat(s.problems);
-        await s.context.close();
+        // 1. The empty plate: nothing saved yet
+        await scene(desktop, null, 'empty.png');
+        // 2. Waiting: a stack of tasks, the newest one is the one to do now
+        await scene(desktop, seed(), 'stack.png');
+        // 3. Focused: ten minutes into the tomato
+        await scene(desktop, seedFocused(), 'focus.png');
+        // 4. Just done: the next task slid in, the Undo toast is up, the Completed list is open
+        await scene({ baseURL, viewport: { width: 1280, height: 1400 } }, seed(), 'completed.png', async page => {
+            await page.locator('#popButton').click();
+            await page.locator('.completed-section .section-toggle').click();
+            await page.evaluate(() => window.scrollTo(0, 0));
+            await page.mouse.move(5, 5);
+            await page.waitForTimeout(500);
+        });
+        // 5. Phone: waiting, focused, just done, empty
+        await scene(phone, seed(), 'mobile.png');
+        await scene(phone, seedFocused(), 'mobile-focus.png');
+        await scene(phone, seed(), 'mobile-done.png', async page => {
+            await page.locator('#popButton').tap();
+            await page.waitForTimeout(500);
+        });
+        await scene(phone, null, 'mobile-empty.png');
     } finally {
         await browser.close();
         server.close();

@@ -36,7 +36,9 @@ async function addTask(page, text) {
     await page.locator('#taskInput').press('Enter');
 }
 
-const topTask = page => page.locator('#taskStack .top-task .task-text');
+// The hero shows the top task; everything else waits in #taskStack
+const topTask = page => page.locator('#heroText');
+const shownTasks = page => page.locator('#heroText, #taskStack .task-text');
 
 test('add, complete, delete, and reload restores', async ({ page }) => {
     await page.goto('/');
@@ -57,14 +59,14 @@ test('add, complete, delete, and reload restores', async ({ page }) => {
     // delete the top task: immediate, no dialog, with an Undo toast
     let dialogs = 0;
     page.on('dialog', dialog => { dialogs++; dialog.dismiss(); });
-    await page.locator('#taskStack .top-task').hover();
-    await page.locator('#taskStack .top-task .remove-btn').click();
+    await page.locator('#heroTask').hover();
+    await page.locator('#heroTask .remove-btn').click();
     await expect(topTask(page)).toHaveText('first');
     await expect(page.locator('#toast')).toContainText('Deleted "second"');
     await page.locator('#toastAction').click();
     await expect(topTask(page)).toHaveText('second');
-    await page.locator('#taskStack .top-task').hover();
-    await page.locator('#taskStack .top-task .remove-btn').click();
+    await page.locator('#heroTask').hover();
+    await page.locator('#heroTask .remove-btn').click();
     await expect(topTask(page)).toHaveText('first');
     expect(dialogs).toBe(0);
 
@@ -143,7 +145,7 @@ test('malicious text is shown as text, never executed', async ({ page }) => {
     });
     await page.reload();
     await expect(topTask(page)).toHaveText('<img src=x onerror="window.__xss=true">');
-    await expect(page.locator('#taskStack img')).toHaveCount(0);
+    await expect(page.locator('#hero img, #taskStack img')).toHaveCount(0);
     expect(await page.evaluate(() => window.__xss)).toBeFalsy();
 });
 
@@ -187,8 +189,10 @@ test('original data beyond today\'s input limits, plus one bad item, loads witho
     await page.reload();
 
     await expect(page.locator('#toast')).toContainText('1 unreadable item skipped');
+    await page.locator('#toastClose').click(); // a warning stays until dismissed, and it sits over the category tabs
     await expect(page.locator('.tab .tab-name')).toHaveText(['Work', 'Personal', longCategory]);
-    await expect(page.locator('#taskStack .task-text')).toHaveText([longText, 'Write report']);
+    await expect(topTask(page)).toHaveText(longText);
+    await expect(page.locator('#taskStack .task-text')).toHaveText(['Write report']);
     await page.locator('.tab', { hasText: 'Q4' }).click();
     await expect(topTask(page)).toHaveText('In the long tab');
     await page.locator('.completed-section .section-toggle').click();
@@ -240,7 +244,8 @@ test('keyboard: Add button, tab arrows, move buttons, live announcements', async
     await page.keyboard.press('Enter');
     await expect(topTask(page)).toHaveText('first');
     await expect(page.locator('#liveRegion')).toContainText('Moved "first" up. Position 1 of 2.');
-    await expect(page.locator(':focus')).toHaveClass(/move-down-btn/); // "up" is disabled now, focus stays in the row
+    // "first" is the hero now: focus follows it there, onto its Start button
+    await expect(page.locator('#timerButton')).toBeFocused();
 
     // the action buttons show up with keyboard focus alone (no hover)
     await item('second').locator('.archive-btn').focus();
@@ -310,17 +315,22 @@ test('dialogs: add, rename and delete a category (with Undo), validation inside 
 test('mouse drag and drop still reorders tasks and categories', async ({ page }) => {
     await page.goto('/');
     for (const text of ['a', 'b', 'c']) await addTask(page, text);   // displayed c, b, a
+    // c is in the hero; a and b wait below it. Drag a above b (the upper half of b's row)
     const item = text => page.locator('#taskStack .task-item', { hasText: new RegExp('^' + text + '(?![a-z])') });
-    await item('a').dragTo(item('c'), { targetPosition: { x: 100, y: 5 } }); // upper half of the top row
+    await item('a').dragTo(item('b'), { targetPosition: { x: 100, y: 5 } });
+    await expect(topTask(page)).toHaveText('c');
+    await expect(page.locator('#taskStack .task-text')).toHaveText(['a', 'b']);
+    // and to the top with the button: a becomes the hero
+    await item('a').locator('.move-up-btn').click();
     await expect(topTask(page)).toHaveText('a');
-    await expect(page.locator('#taskStack .task-text')).toHaveText(['a', 'c', 'b']);
+    await expect(shownTasks(page)).toHaveText(['a', 'c', 'b']);
 
     await page.locator('.tab', { hasText: 'Personal' }).dragTo(page.locator('.tab', { hasText: 'Work' }), { targetPosition: { x: 5, y: 10 } });
     await expect(page.locator('.tab-name')).toHaveText(['Personal', 'Work']);
     await page.reload();
     await expect(page.locator('.tab-name')).toHaveText(['Personal', 'Work']);
     await page.locator('.tab', { hasText: 'Work' }).click();
-    await expect(page.locator('#taskStack .task-text')).toHaveText(['a', 'c', 'b']);
+    await expect(shownTasks(page)).toHaveText(['a', 'c', 'b']);
 });
 
 test('the app works when Google Fonts cannot be loaded', async ({ page }) => {
@@ -369,17 +379,17 @@ test.describe('phone-sized touch viewport', () => {
         expect(metrics.height).toBeGreaterThanOrEqual(metrics.viewport);
         expect(metrics.inputFont).toBeGreaterThanOrEqual(16); // avoids the iOS focus zoom
 
-        // the top card carries Start and Done; lower rows fold their buttons away until the row is tapped
-        await expect(page.locator('#taskStack .top-task .now-actions')).toBeVisible();
-        const lower = page.locator('#taskStack .task-item:not(.top-task)');
+        // the hero carries Start and Done; lower rows fold their buttons away until the row is tapped
+        await expect(page.locator('#heroTask .now-actions')).toBeVisible();
+        const lower = page.locator('#taskStack .task-item');
         expect((await lower.locator('.task-actions').boundingBox()).height).toBeLessThanOrEqual(1);
         await lower.locator('.task-text').tap();
         await expect(lower).toHaveClass(/open/);
 
         // every control is at least 44px
-        const selectors = ['#addTaskBtn', '#popButton', '#taskInput', '#addCategoryBtn', '#renameCategoryBtn',
+        const selectors = ['#addTaskBtn', '#popButton', '#timerButton', '#taskInput', '#addCategoryBtn', '#renameCategoryBtn',
             '#deleteCategoryBtn', '.tab-button', '.section-toggle', '#exportBtn', '#importBtn',
-            '#taskStack .task-item:not(.top-task) .task-action-btn'];
+            '#taskStack .task-item .task-action-btn', '#thenLink'];
         for (const selector of selectors) {
             const handles = await page.locator(selector).elementHandles();
             expect(handles.length, selector + ' exists').toBeGreaterThan(0);
@@ -400,7 +410,7 @@ test.describe('phone-sized touch viewport', () => {
         await page.locator('#taskStack .task-item', { hasText: 'call the bank' }).locator('.move-up-btn').tap();
         await expect(topTask(page)).toHaveText('call the bank');
 
-        // the toast does not cover the Export / Import buttons
+        // the toast sits at the top and does not cover the tools at the bottom
         await page.locator('#popButton').tap();
         const toast = await page.locator('#toast').boundingBox();
         const footer = await page.locator('#exportBtn').boundingBox();
@@ -408,7 +418,7 @@ test.describe('phone-sized touch viewport', () => {
     });
 });
 
-test.describe('phone: folded row buttons and the Done button inside the card', () => {
+test.describe('phone: folded row buttons and the Done button in the hero', () => {
     const { defaultBrowserType, ...phone } = devices['Pixel 7'];
     test.use(phone);
 
@@ -419,10 +429,10 @@ test.describe('phone: folded row buttons and the Done button inside the card', (
         await addTask(page, 'c');
         // row numbers and paused-timer buttons are gone from the lower rows
         await expect(page.locator('.task-index')).toHaveCount(0);
-        await expect(page.locator('#taskStack .task-item:not(.top-task) .timer-btn')).toHaveCount(0);
+        await expect(page.locator('#taskStack .task-item .timer-btn')).toHaveCount(0);
 
         // keyboard focus on a folded button opens it at full size with a solid outline
-        const up = page.locator('#taskStack .task-item:not(.top-task) .move-up-btn').first();
+        const up = page.locator('#taskStack .task-item .move-up-btn').first();
         await up.focus();
         const box = await up.boundingBox();
         expect(box.width).toBeGreaterThanOrEqual(43.5);
@@ -430,17 +440,17 @@ test.describe('phone: folded row buttons and the Done button inside the card', (
         expect(await up.evaluate(el => getComputedStyle(el).outlineStyle)).toBe('solid');
         await page.locator('#taskInput').focus();
 
-        // tapping Done inside the card completes the top task (no layout shift swallows the tap)
+        // tapping Done in the hero completes the top task (no layout shift swallows the tap)
         await page.locator('#popButton').tap();
         await expect(topTask(page)).toHaveText('b');
-        // Start a timer from the card: the dot is steady, not blinking
-        await page.locator('#taskStack .top-task .timer-btn').tap();
-        await expect(page.locator('.task-time.running')).toBeVisible();
-        expect(await page.locator('.task-time.running').evaluate(el => getComputedStyle(el, '::before').animationName)).toBe('none');
+        // Start the timer from the hero: the clock shows time left and the status changes
+        await page.locator('#timerButton').tap();
+        await expect(page.locator('#heroStatus')).toHaveText('Ripening…');
+        await expect(page.locator('#heroClock')).toHaveText(/^(24:5\d|25:00)$/);
     });
 });
 
-test('keyboard only: Done in the card completes, and focus stays on the new Done button', async ({ page }) => {
+test('keyboard only: Done in the hero completes, and focus stays on the Done button', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('#taskInput')).toBeFocused(); // desktop starts in the input
     await addTask(page, 'first');
@@ -465,32 +475,221 @@ test.describe('desktop mouse: Done clicked while a task name is being edited', (
             await page.setViewportSize({ width: 1280, height: 800 });
             await page.goto('/');
             for (const text of ['a', 'b', 'c']) await addTask(page, text);
-            await page.locator('#taskStack .task-text', { hasText: new RegExp(`^${row}$`) }).dblclick();
-            await page.locator('#taskStack .task-edit').fill('renamed');
+            await page.locator('#heroText, #taskStack .task-text', { hasText: new RegExp(`^${row}$`) }).dblclick();
+            await page.locator('.task-edit').fill('renamed');
             const box = await page.locator('#popButton').boundingBox();
             await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-            await expect(page.locator('#taskStack .task-text')).toHaveText([...expected.stack].reverse());
-            await expect(page.locator('#taskStack .task-edit')).toHaveCount(0);
+            await expect(shownTasks(page)).toHaveText([...expected.stack].reverse());
+            await expect(page.locator('.task-edit')).toHaveCount(0);
             const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('fileDB')));
             expect(stored.tasks.map(t => t.text)).toEqual(expected.stack);
             expect(stored.completed.map(t => t.text)).toEqual(expected.completed);
-            await expect(page.locator('#toast')).toContainText(`Completed "${expected.completed[0]}"`);
+            await expect(page.locator('#toast')).toContainText(`Done "${expected.completed[0]}"`);
         });
     }
 });
 
-test('a change from another tab keeps the top card, and focus on Done, in place', async ({ page, context }) => {
+test('a change from another tab keeps the hero card, and focus on Done, in place', async ({ page, context }) => {
     await page.goto('/');
     for (const text of ['a', 'b']) await addTask(page, text);
-    await page.evaluate(() => { window.__topCard = document.querySelector('#taskStack .top-task'); });
+    await page.evaluate(() => { window.__topCard = document.querySelector('#heroTask'); });
     await page.locator('#popButton').focus();
     const other = await context.newPage();
     await other.goto('/');
     await other.locator('#taskStack .task-text', { hasText: /^a$/ }).dblclick();
-    await other.locator('#taskStack .task-edit').fill('a from the other tab');
-    await other.locator('#taskStack .task-edit').press('Enter');
-    await expect(page.locator('#taskStack .task-text')).toHaveText(['b', 'a from the other tab']);
+    await other.locator('.task-edit').fill('a from the other tab');
+    await other.locator('.task-edit').press('Enter');
+    await expect(shownTasks(page)).toHaveText(['b', 'a from the other tab']);
     await expect(page.locator('#popButton')).toBeFocused();
-    expect(await page.evaluate(() => document.querySelector('#taskStack .top-task') === window.__topCard)).toBe(true);
+    expect(await page.evaluate(() => document.querySelector('#heroTask') === window.__topCard)).toBe(true);
     await other.close();
+});
+
+// ---- One Tomato ---------------------------------------------------------------------------------
+
+const MIN = 60 * 1000;
+const seedTasks = names => JSON.stringify({
+    tasks: names.map((text, i) => ({ text, id: 'seed' + i, category: 'Work', createdAt: '2026-10-10T08:00:00.000Z' })),
+    completed: [], archived: [], categories: ['Work', 'Personal'], currentCategory: 'Work'
+});
+
+async function seed(page, raw) {
+    await page.goto('/');
+    await page.evaluate(value => { localStorage.clear(); localStorage.setItem('fileDB', value); }, raw);
+    await page.reload();
+}
+
+test.describe('the hero fits the first screen, with no sideways scroll', () => {
+    const sizes = [['desktop', 1280, 800], ['phone', 390, 844], ['small phone', 390, 667]];
+    for (const [label, width, height] of sizes) {
+        test(`${label} ${width}x${height}`, async ({ page }) => {
+            await page.setViewportSize({ width, height });
+            await seed(page, seedTasks(['Submit the expense report', 'Reply to Dana about the Q3 schedule', 'Review pull request #128']));
+            const fits = async selector => {
+                const box = await page.locator(selector).boundingBox();
+                expect(box, selector).not.toBeNull();
+                expect(box.y, selector + ' top').toBeGreaterThanOrEqual(0);
+                expect(box.y + box.height, selector + ' bottom').toBeLessThanOrEqual(height);
+                expect(box.x, selector + ' left').toBeGreaterThanOrEqual(0);
+                expect(box.x + box.width, selector + ' right').toBeLessThanOrEqual(width);
+            };
+            for (const selector of ['#heroText', '#dial', '#heroClock', '#timerButton', '#popButton']) await fits(selector);
+            const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+            expect(overflow).toBeLessThanOrEqual(0);
+        });
+    }
+});
+
+test('start, ripen, one more, done, next: the 25-minute flow', async ({ page }) => {
+    await page.clock.install({ time: new Date('2026-10-10T09:00:00Z') });
+    await seed(page, seedTasks(['write the report', 'call the bank']));
+    await expect(topTask(page)).toHaveText('call the bank');
+    await expect(page.locator('#heroClock')).toHaveText('25:00');
+    await expect(page.locator('#heroStatus')).toHaveText('Fresh tomato. Start?');
+    await expect(page.locator('#thenLink')).toHaveText('Then: write the report');
+
+    await page.locator('#timerButton').click();
+    await page.clock.runFor(10 * MIN);
+    await expect(page.locator('#heroClock')).toHaveText('15:00');
+    await expect(page.locator('#heroStatus')).toHaveText('Ripening…');
+    await expect(page).toHaveTitle('15:00 · call the bank');
+    // the wedge really shrinks: 15 of 25 minutes left is 60% of the circle (the stylesheet must not override it)
+    const wedge = await page.locator('#dialArc').evaluate(el => parseFloat(getComputedStyle(el).strokeDasharray));
+    expect(wedge / 138.23).toBeCloseTo(0.6, 2);
+    await page.clock.runFor(10 * MIN + 30 * 1000);
+    await expect(page.locator('#heroStatus')).toHaveText('Almost ripe.');
+    await expect(page.locator('#dial')).toHaveClass(/tilt/);
+
+    await page.clock.runFor(5 * MIN);
+    await expect(page.locator('#heroStatus')).toHaveText('Ripe! Take five, then Done — or one more?');
+    await expect(page.locator('#timerButton')).toContainText('One more');
+    await expect(page).toHaveTitle('One Tomato');
+    await expect(page.locator('#liveRegion')).toContainText('Ripe! "call the bank" — 25 minutes done.');
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('fileDB')).tasks.find(t => t.id === 'seed1'));
+    expect(stored.timeSpent).toBe(25 * MIN);
+    expect(stored.timerStartedAt).toBeUndefined();
+    await expect(page.locator('#heroTally svg')).toHaveCount(1);
+    // ripe never completes the task by itself
+    await expect(topTask(page)).toHaveText('call the bank');
+
+    await page.locator('#timerButton').click();      // one more
+    await expect(page.locator('#heroStatus')).toHaveText('Ripening…');
+    await page.clock.runFor(2 * MIN);
+    await page.locator('#timerButton').click();      // pause
+    await expect(page.locator('#heroClock')).toHaveText('23:00');
+
+    await page.locator('#popButton').click();       // Done
+    await expect(page.locator('#toast')).toContainText('Done "call the bank" in 27m. Next tomato!');
+    await expect(topTask(page)).toHaveText('write the report');
+    await expect(page.locator('#heroClock')).toHaveText('25:00');
+    await expect(page.locator('#heroTask')).toHaveClass(/became-top/);
+    await expect(page.locator('#thenNone')).toBeVisible();
+    await expect(page.locator('#thenNone')).toHaveText('Last one on the plate.');
+    await expect(page.locator('#thenLink')).toBeHidden();
+});
+
+test('keyboard only: add, Start, Done and the next task, without the mouse', async ({ page }) => {
+    await page.goto('/');
+    await page.keyboard.type('one thing');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('another thing');
+    await page.keyboard.press('Enter');
+    await expect(topTask(page)).toHaveText('another thing');
+    await page.locator('#timerButton').focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#heroStatus')).toHaveText('Ripening…');
+    await expect(page.locator('#timerButton')).toBeFocused();
+    await page.keyboard.press('Space');                 // pause again
+    await expect(page.locator('#heroStatus')).toHaveText('Half-ripe. Keep going?');
+    await page.keyboard.press('Tab');                   // Start -> Done
+    await expect(page.locator('#popButton')).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(topTask(page)).toHaveText('one thing');
+    await expect(page.locator('#popButton')).toBeFocused();
+    // F2 renames the hero from its own text
+    await topTask(page).focus();
+    await page.keyboard.press('F2');
+    await expect(page.locator('.task-edit')).toBeFocused();
+    await page.keyboard.press('End');
+    await page.keyboard.type(' (renamed)');
+    await page.keyboard.press('Enter');
+    await expect(topTask(page)).toHaveText('one thing (renamed)');
+    await expect(topTask(page)).toBeFocused();
+});
+
+test('adding a task puts it on top and pauses the timer of the one it buried', async ({ page }) => {
+    await page.goto('/');
+    await addTask(page, 'first');
+    await page.locator('#timerButton').click();
+    await expect(page.locator('#heroStatus')).toHaveText('Ripening…');
+    await addTask(page, 'urgent');
+    await expect(topTask(page)).toHaveText('urgent');
+    await expect(page.locator('#heroStatus')).toHaveText('Fresh tomato. Start?');
+    await expect(page.locator('#liveRegion')).toContainText('Paused "first" — new thing on top.');
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('fileDB')).tasks);
+    expect(stored.filter(t => t.timerStartedAt).length).toBe(0);
+    await expect(page).toHaveTitle('One Tomato');
+});
+
+test('the Then line jumps to the waiting list', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 667 });
+    await seed(page, seedTasks(Array.from({ length: 8 }, (_, i) => 'task ' + i)));
+    await page.locator('#thenLink').click();
+    await expect(page.locator('#stackRest')).toBeInViewport();
+});
+
+test('original v0 data: every task is shown, and an action keeps every old field', async ({ page }) => {
+    const v0 = JSON.parse(fs.readFileSync('tests/fixtures/original-v0.json', 'utf8'));
+    await page.goto('/');
+    await page.evaluate(raw => { localStorage.clear(); localStorage.setItem('fileDB', raw); }, v0.fileDB);
+    await page.reload();
+    await expect(shownTasks(page)).toHaveText(['Email "Bob" & <team>', 'Write report']);   // Work: hero + the one waiting
+    await page.locator('.tab', { hasText: 'Personal' }).click();
+    await expect(shownTasks(page)).toHaveText(['Buy milk']);
+    await page.locator('.completed-section .section-toggle').click();
+    await expect(page.locator('#completedTasks .completed-text')).toHaveText(['Done thing']);
+    await page.locator('.tab', { hasText: 'Work' }).click();
+    await page.locator('.archive-section .section-toggle').click();
+    await expect(page.locator('#archivedTasks .archived-text')).toHaveText(['Maybe later']);
+    // start and pause: a save happens; every field of the old data is still there
+    await page.locator('#timerButton').click();
+    await page.locator('#timerButton').click();
+    await addTask(page, 'new one');
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('fileDB')));
+    v0.expected.tasks.forEach((old, i) => {
+        const now = stored.tasks[i];
+        for (const key of Object.keys(old)) expect(now[key], `task ${old.id} keeps ${key}`).toEqual(old[key]);
+    });
+    expect(stored.completed).toEqual(v0.expected.completed);
+    expect(stored.archived).toEqual(v0.expected.archived);
+    expect(stored.categories).toEqual(v0.expected.categories);
+});
+
+test('time already logged by the old count-up timer becomes tomatoes and time left', async ({ page }) => {
+    const raw = JSON.stringify({
+        tasks: [{ text: 'old timer', id: 'o1', category: 'Work', createdAt: '2026-10-01T09:00:00.000Z', timeSpent: 37 * MIN }],
+        completed: [], archived: [], categories: ['Work', 'Personal'], currentCategory: 'Work'
+    });
+    await seed(page, raw);
+    await expect(page.locator('#heroClock')).toHaveText('13:00');
+    await expect(page.locator('#heroStatus')).toHaveText('Half-ripe. Keep going?');
+    await expect(page.locator('#heroTally svg')).toHaveCount(1);
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('fileDB')).tasks[0].timeSpent);
+    expect(stored).toBe(37 * MIN);
+});
+
+test('reduced motion: the next task appears with no entrance animation', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto('/');
+    await addTask(page, 'one');
+    await addTask(page, 'two');
+    await page.locator('#popButton').click();
+    await expect(topTask(page)).toHaveText('one');
+    await expect(page.locator('#heroTask')).not.toHaveClass(/became-top/);
+    const motion = await page.evaluate(() => ({
+        animation: getComputedStyle(document.querySelector('#heroTask')).animationName,
+        dial: parseFloat(getComputedStyle(document.querySelector('#dial')).transitionDuration)
+    }));
+    expect(motion.animation).toBe('none');
+    expect(motion.dial).toBeLessThan(0.001);
 });

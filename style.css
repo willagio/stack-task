@@ -138,6 +138,11 @@ input {
     color: var(--soft);
 }
 
+.hero-name {
+    position: relative;
+    width: 100%;
+}
+
 .top-task .task-text {
     width: 100%;
     padding: 2px 6px;
@@ -183,7 +188,7 @@ input {
     fill: none;
     stroke: var(--tomato);
     stroke-width: 44;
-    stroke-dasharray: 138.23 138.23;
+    /* stroke-dasharray is set by script every second (a CSS value would override it) */
 }
 
 .dial-leaf {
@@ -325,9 +330,19 @@ input {
 }
 
 .top-task .task-edit {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    margin: 0;
+    padding: 6px;
     font-size: 24px;
     font-weight: 700;
     text-align: center;
+}
+
+.top-task.editing .task-text {
+    visibility: hidden;
 }
 
 .top-task.editing,
@@ -357,16 +372,15 @@ input {
 }
 
 .then-link {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
     max-width: 100%;
-    padding: 8px 12px;
+    min-height: 44px;
+    padding: 0 14px;
     border-radius: 999px;
     color: var(--soft);
     text-decoration: none;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    vertical-align: middle;
+    white-space: pre;
 }
 
 .then-link:hover {
@@ -374,14 +388,23 @@ input {
     color: var(--ink);
 }
 
+.then-label,
+.then-more {
+    flex-shrink: 0;
+}
+
 .then-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-weight: 700;
     color: var(--ink);
 }
 
 .then-none {
     display: inline-block;
-    padding: 8px 12px;
+    padding: 10px 14px;
 }
 
 /* ---- Input ---- */
