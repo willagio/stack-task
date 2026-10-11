@@ -18,7 +18,7 @@
         <main class="app">
             <header class="header">
                 <h1 class="title">Task Stack</h1>
-                <p class="stack-indicator">
+                <p class="stack-indicator visually-hidden">
                     <span class="stack-count">0</span>
                     <span class="stack-label">tasks</span>
                 </p>
@@ -65,13 +65,13 @@
                     <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false">
                         <path d="M4 10.5L8 14.5L16 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
-                    Complete top task
+                    Done
                 </button>
             </div>
 
             <section id="taskPanel" class="tasks-section" role="tabpanel" aria-labelledby="tab-0">
                 <div class="section-header">
-                    <h2>Active Stack</h2>
+                    <h2 class="visually-hidden">Active Stack</h2>
                 </div>
                 <div id="taskStack" class="task-stack" role="list"></div>
             </section>

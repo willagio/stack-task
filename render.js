@@ -51,6 +51,9 @@
     }
 
     function create(doc, refs) {
+        // The Done button lives in the input section until a task exists; then it moves into the top card
+        const popHome = refs.popButton ? refs.popButton.parentNode : null;
+
         // el('div', { class, text, attrs, data }, children)
         function el(tag, options, children) {
             const node = doc.createElement(tag);
@@ -193,11 +196,16 @@
         function renderStack(state) {
             const visible = State.inCategory(state.tasks, state.currentCategory);
             if (visible.length === 0) {
-                refs.taskStack.replaceChildren(emptyState('No tasks in stack', 'Add one to get started!'));
+                if (popHome) {
+                    popHome.appendChild(refs.popButton);
+                    refs.popButton.setAttribute('aria-label', 'Done');
+                }
+                refs.taskStack.replaceChildren(emptyState('No tasks in stack', 'Type one above and press Enter.'));
                 return;
             }
             const now = Date.now();
             const before = snapshotStack(refs.taskStack);
+            const keep = keptTopCard(visible[visible.length - 1]);
             // Top of the stack first
             const items = visible.map((task, index) => {
                 const isTop = index === visible.length - 1;
@@ -209,24 +217,36 @@
                     el('div', { class: 'drag-handle', attrs: { 'aria-hidden': 'true' } }, [icon('grip')]),
                     el('div', { class: 'task-text', text: task.text, attrs: { title: task.text } })
                 ];
-                const time = timeLabel(task, now);
+                // Elapsed time shows on the top task and on whichever timer is running; paused time on lower rows stays out of sight
+                const time = (isTop || running) ? timeLabel(task, now) : null;
                 if (time) children.push(time);
-                if (!isTop) children.push(el('div', { class: 'task-index', text: `#${visible.length - index}` }));
+                const timerLabel = running ? `Pause timer for "${name}"` : `Start timer for "${name}"`;
+                const timerBtn = iconButton(running ? 'task-action-btn timer-btn running' : 'task-action-btn timer-btn',
+                    running ? 'pause' : 'play', timerLabel, data('timer'));
+                const actions = [
+                    iconButton('task-action-btn move-up-btn', 'up', `Move "${name}" up`, data('up'), isTop),
+                    iconButton('task-action-btn move-down-btn', 'down', `Move "${name}" down`, data('down'), index === 0),
+                    iconButton('task-action-btn archive-btn', 'archive', `Archive "${name}"`, data('archive')),
+                    iconButton('task-action-btn remove-btn', 'close', `Delete "${name}"`, data('remove'))
+                ];
+                if (isTop) {
+                    // The one thing to do now: Start and Done sit right next to it
+                    timerBtn.classList.add('with-label');
+                    timerBtn.appendChild(el('span', { text: running ? 'Pause' : 'Start' }));
+                    refs.popButton.setAttribute('aria-label', `Done: "${name}"`);
+                    children.push(el('div', { class: 'task-actions' }, actions));
+                    if (keep) return refreshTopCard(keep, children, timerBtn);
+                    children.push(el('div', { class: 'now-actions' }, [timerBtn, refs.popButton]));
+                } else {
+                    // Lower rows stay quiet: a timer button only while that timer is running
+                    if (running) actions.unshift(timerBtn);
+                    children.push(el('div', { class: 'task-actions' }, actions));
+                }
                 return el('div', {
                     class: isTop ? 'task-item top-task' : 'task-item',
                     attrs: { role: 'listitem' },
                     data: { id: task.id }
-                }, [
-                    ...children,
-                    el('div', { class: 'task-actions' }, [
-                        iconButton(running ? 'task-action-btn timer-btn running' : 'task-action-btn timer-btn', running ? 'pause' : 'play',
-                            running ? `Pause timer for "${name}"` : `Start timer for "${name}"`, data('timer')),
-                        iconButton('task-action-btn move-up-btn', 'up', `Move "${name}" up`, data('up'), isTop),
-                        iconButton('task-action-btn move-down-btn', 'down', `Move "${name}" down`, data('down'), index === 0),
-                        iconButton('task-action-btn archive-btn', 'archive', `Archive "${name}"`, data('archive')),
-                        iconButton('task-action-btn remove-btn', 'close', `Delete "${name}"`, data('remove'))
-                    ])
-                ]);
+                }, children);
             }).reverse();
             if (items.length > 1) {
                 const rest = items.length - 1;
@@ -236,8 +256,43 @@
                     attrs: { 'aria-hidden': 'true' }
                 }));
             }
-            refs.taskStack.replaceChildren(...items);
+            if (keep) {
+                Array.from(refs.taskStack.children).forEach(node => { if (node !== keep) refs.taskStack.removeChild(node); });
+                items.slice(1).forEach(node => refs.taskStack.appendChild(node));
+            } else {
+                refs.taskStack.replaceChildren(...items);
+            }
             animateStack(refs.taskStack, before);
+        }
+
+        // The top card stays in the page while the same task is on top. A re-render between mousedown and
+        // mouseup (an edit field saving on blur) would otherwise take Done out from under the pointer, and
+        // the browser drops the click; it would also drop keyboard focus on Done or Start.
+        function keptTopCard(topTask) {
+            const actions = refs.popButton.parentNode;
+            const card = actions && actions.parentNode;
+            if (!card || card.parentNode !== refs.taskStack || !card.classList.contains('top-task')) return null;
+            return State.sameId(card.dataset.id, topTask.id) ? card : null;
+        }
+
+        // Swaps in the card's new contents around the Done button, which never moves
+        function refreshTopCard(card, children, timerBtn) {
+            const nowActions = refs.popButton.parentNode;
+            Array.from(card.children).forEach(node => { if (node !== nowActions) card.removeChild(node); });
+            children.forEach(node => card.insertBefore(node, nowActions));
+            const oldTimer = Array.from(nowActions.children).find(node => node !== refs.popButton);
+            if (oldTimer) {
+                // Updated in place, so a press or focus on Start survives too
+                oldTimer.className = timerBtn.className;
+                ['title', 'aria-label'].forEach(name => oldTimer.setAttribute(name, timerBtn.getAttribute(name)));
+                oldTimer.replaceChildren(...Array.from(timerBtn.childNodes));
+            } else {
+                nowActions.insertBefore(timerBtn, refs.popButton);
+            }
+            card.classList.remove('editing');
+            // A drag that left the top card where it was may have shifted it; the stack animation takes over
+            card.style.transform = '';
+            return card;
         }
 
         function renderHistory(container, tasks, spec) {

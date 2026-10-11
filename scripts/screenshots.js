@@ -53,6 +53,7 @@ async function open(browser, contextOptions, data) {
         await page.evaluate(raw => localStorage.setItem('fileDB', raw), JSON.stringify(data));
         await page.reload();
     }
+    await page.waitForTimeout(500); // let the rows finish fading in
     return { context, page, problems };
 }
 

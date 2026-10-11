@@ -6,14 +6,14 @@ A small task manager that keeps your tasks in a stack, so you work on one thing 
 
 ## How it works
 
-- **Stack:** a new task goes on top. The top task is highlighted and is the one to work on; the rest are numbered below it.
-- **Complete:** "Complete top task" moves the top task to the Completed list. Tasks can also be archived, deleted, or moved up and down with the buttons on each row. With a mouse, drag a row and the others slide aside to make room.
+- **Stack:** a new task goes on top. The top task is the one card that stands out, and it is the one to work on; the rest wait quietly below it under "Up next". The task count is kept for screen readers rather than shown as a number.
+- **Complete:** **Done**, inside the top card, moves that task to the Completed list. Tasks can also be archived, deleted, or moved up and down with the buttons on each row. On a touch screen the row buttons stay folded away until you tap the row (one row open at a time); with a mouse they appear on hover, and with the keyboard on focus. With a mouse, drag a row and the others slide aside to make room.
 - **Rename:** double-click a task (or press `F2` from one of its buttons) to edit it in place. `Enter` saves, `Esc` cancels.
-- **Timer:** the ▶ button on a row starts a timer for that task; one runs at a time, and starting another pauses the first. The time spent stays on the row, and completing or archiving a task stops the timer and keeps the total next to it in the Completed or Archive list.
+- **Timer:** **Start** in the top card starts a timer for that task (a lower row shows a timer button only while its timer runs); one runs at a time, and starting another pauses the first. The time spent stays on the row, and completing or archiving a task stops the timer and keeps the total next to it in the Completed or Archive list.
 - **Categories:** each category (`Work` and `Personal` to start with) has its own stack, shown as tabs. Add, rename and delete them with the buttons next to the tabs, or double-click a tab to rename it. Drag tabs, or press `Alt` + arrow keys, to reorder them.
 - **Archive and Completed:** collapsible lists per category. Restore a task to the bottom of its stack, or delete it for good.
 - **Undo:** completing, archiving, restoring, deleting a task or a category, and importing show an Undo toast for a few seconds (also `Ctrl`/`Cmd` + `Z`). Only the latest action can be undone.
-- **Keyboard and touch:** everything is reachable by keyboard (arrow keys switch tabs, `F2` renames), and the layout adapts to phone-sized screens.
+- **Keyboard and touch:** everything is reachable by keyboard (arrow keys switch tabs, `F2` renames), and the layout adapts to phone-sized screens. On desktop the cursor starts in the input, so you can type a task straight away; the running-timer dot does not blink, and animations are switched off when your system asks for reduced motion.
 
 | Completed list with Undo | Phone |
 | --- | --- |

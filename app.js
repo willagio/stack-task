@@ -64,7 +64,17 @@
                 }
             });
             this.render();
+            this.focusInputOnDesktop();
             this.startupNotices.forEach(message => this.ui.notify(message, { kind: 'error' }));
+        }
+
+        // A keyboard is at hand on desktop, so start in the input; on touch that would only raise the on-screen keyboard
+        focusInputOnDesktop() {
+            try {
+                if (this.win.matchMedia('(hover: hover) and (pointer: fine)').matches) this.refs.taskInput.focus();
+            } catch (e) {
+                // No matchMedia: leave focus alone
+            }
         }
 
         // ---- Persistence -------------------------------------------------
@@ -92,8 +102,21 @@
         render() {
             const token = this.captureFocus();
             this.renderer.renderAll(this.state);
+            this.applyOpenRow();
             this.restoreFocus(token);
             this.syncTicker();
+        }
+
+        // On touch the row actions are folded away; tapping a row opens it (one at a time)
+        toggleRow(item) {
+            this.openId = State.sameId(this.openId, item.dataset.id) ? null : item.dataset.id;
+            this.applyOpenRow();
+        }
+
+        applyOpenRow() {
+            this.itemsOf(this.refs.taskStack).forEach(node => {
+                node.classList.toggle('open', this.openId != null && State.sameId(node.dataset.id, this.openId));
+            });
         }
 
         commit() {
@@ -201,7 +224,8 @@
                 const tab = refs.tabsList.querySelector('.tab-active .tab-button');
                 if (tab) tab.focus();
             } else if (token.type === 'pop') {
-                if (refs.popButton.disabled && token.keyboard) refs.taskInput.focus();
+                // The button moves into the new top card (or back home), which drops focus
+                if (token.keyboard) (refs.popButton.disabled ? refs.taskInput : refs.popButton).focus();
             } else {
                 const items = this.itemsOf(token.list);
                 let item = items.find(node => State.sameId(node.dataset.id, token.id));
@@ -257,7 +281,11 @@
 
             refs.taskStack.addEventListener('click', event => {
                 const button = event.target.closest('.task-action-btn');
-                if (!button) return;
+                if (!button) {
+                    const item = event.target.closest('.task-item');
+                    if (item && !(event.detail > 1) && !item.classList.contains('editing') && !event.target.closest('button, input')) this.toggleRow(item);
+                    return;
+                }
                 const id = button.dataset.id;
                 switch (button.dataset.action) {
                     case 'timer': this.toggleTimer(id); break;
