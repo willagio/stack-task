@@ -1,14 +1,9 @@
-/* Category tabs: index-sticker style row with category tools on the right */
+/* Category tabs: a row of chips. The active one is filled with ink. */
 .tabs-container {
-    display: flex;
-    align-items: stretch;
-    background: var(--bg-card);
-    border-bottom: 1px solid var(--border-color);
     flex-shrink: 0;
 }
 
 .tabs-scroll {
-    flex: 1;
     min-width: 0;
     overflow-x: auto;
     overflow-y: hidden;
@@ -21,16 +16,17 @@
 
 .tabs-list {
     display: flex;
+    gap: 8px;
     min-width: min-content;
-    height: 100%;
+    padding: 6px 4px; /* room for the focus ring, which the scroll area would otherwise clip */
 }
 
 .tab {
     display: flex;
     position: relative;
-    min-width: 72px;
-    background: transparent;
-    border-right: 1px solid var(--border-color);
+    background: var(--card);
+    border: 2px solid var(--ink);
+    border-radius: 999px;
     cursor: grab;
     transition: background 0.15s ease;
 }
@@ -40,25 +36,12 @@
 }
 
 .tab:hover {
-    background: rgba(50, 209, 106, 0.06);
+    background: var(--input-bg);
 }
 
 .tab-active,
 .tab-active:hover {
-    background: rgba(50, 209, 106, 0.08);
-    z-index: 1;
-}
-
-.tab-active::after {
-    content: '';
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 2px;
-    background: var(--accent);
-    box-shadow: 0 0 8px rgba(50, 209, 106, 0.35);
-    pointer-events: none;
+    background: var(--ink);
 }
 
 .tab-button {
@@ -66,72 +49,23 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 48px;
-    padding: 0 16px;
+    min-height: 44px;
+    padding: 0 18px;
     background: none;
     border: none;
-    color: var(--text-secondary);
+    border-radius: 999px;
+    color: var(--ink);
     cursor: inherit;
     white-space: nowrap;
 }
 
-.tab-active .tab-button,
-.tab-button:hover {
-    color: var(--accent);
-}
-
-.tab-button:focus-visible {
-    outline-offset: -4px;
+.tab-active .tab-button {
+    color: var(--on-fill);
 }
 
 .tab-name {
-    font-family: var(--mono);
-    font-size: 12px;
-    font-weight: 500;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-}
-
-.category-tools {
-    display: flex;
-    flex-shrink: 0;
-    border-left: 1px solid var(--border-color);
-}
-
-.category-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    min-height: 48px;
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: background 0.15s ease, color 0.15s ease;
-}
-
-.category-btn + .category-btn {
-    border-left: 1px solid var(--border-color);
-}
-
-.category-btn:hover:not(:disabled) {
-    background: rgba(50, 209, 106, 0.08);
-    color: var(--accent);
-}
-
-.category-btn-danger:hover:not(:disabled) {
-    color: var(--danger);
-}
-
-.category-btn:disabled {
-    color: var(--text-secondary);
-    opacity: 0.45;
-    cursor: not-allowed;
-}
-
-.category-btn:focus-visible {
-    outline-offset: -4px;
+    font-size: 15px;
+    font-weight: 700;
 }
 
 /* Drag and drop states */
@@ -141,15 +75,14 @@
 }
 
 .tab.drag-over-left {
-    box-shadow: -3px 0 0 0 var(--accent);
+    box-shadow: -4px 0 0 0 var(--tomato);
 }
 
 .tab.drag-over-right {
-    box-shadow: 3px 0 0 0 var(--accent);
+    box-shadow: 4px 0 0 0 var(--tomato);
 }
 
-@media (pointer: coarse) {
-    .category-btn {
-        width: 44px;
-    }
+/* The ring goes outside the chip: inside it, it would vanish against the active chip's ink */
+.tab-button:focus-visible {
+    outline-offset: 4px;
 }

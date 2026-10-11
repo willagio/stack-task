@@ -170,9 +170,35 @@ function buildPage(doc) {
     add(body, 'button', { id: 'deleteCategoryBtn' });
     add(body, 'input', { id: 'taskInput' });
     add(body, 'button', { id: 'addTaskBtn' });
-    add(body, 'button', { id: 'popButton' });
+    const popButton = add(body, 'button', { id: 'popButton' }, 'hero-btn pop-button');
     const panel = add(body, 'div', { id: 'taskPanel' });
-    add(panel, 'div', { id: 'taskStack' });
+    const hero = add(panel, 'div', { id: 'hero' });
+    add(hero, 'div', { id: 'heroEmpty' });
+    const empty = hero.children[0];
+    add(empty, 'p', { id: 'emptyTitle' });
+    add(empty, 'p', { id: 'emptySub' });
+    const card = add(hero, 'div', { id: 'heroTask' }, 'top-task');
+    card.hidden = true;
+    add(card, 'p', { id: 'heroText', tabindex: '0' }, 'task-text');
+    const dial = add(card, 'div', { id: 'dial' }, 'dial');
+    add(dial, 'circle', { id: 'dialArc' });
+    add(dial, 'p', { id: 'heroClock', role: 'timer' }, 'now-clock');
+    add(card, 'p', { id: 'heroStatus' }, 'hero-status');
+    add(card, 'p', { id: 'heroTally' }, 'tally');
+    const actions = add(card, 'div', {}, 'now-actions');
+    const timer = add(actions, 'button', { id: 'timerButton' }, 'hero-btn timer-btn');
+    timer.dataset.action = 'timer';
+    add(timer, 'span', { id: 'timerLabel' });
+    actions.appendChild(popButton);
+    const secondary = add(card, 'div', {}, 'task-actions');
+    [['down', 'move-down-btn'], ['archive', 'archive-btn'], ['remove', 'remove-btn']].forEach(([action, cls]) => {
+        add(secondary, 'button', {}, 'task-action-btn ' + cls).dataset.action = action;
+    });
+    const then = add(panel, 'p', { id: 'thenLine' });
+    add(then, 'a', { id: 'thenLink' });
+    add(then, 'span', { id: 'thenNone' });
+    const rest = add(panel, 'div', { id: 'stackRest' });
+    add(rest, 'div', { id: 'taskStack' });
     const section = (cls, countId, listId) => {
         const el = add(body, 'div', {}, cls + ' collapsible-section collapsed');
         const toggle = add(add(el, 'div', {}, 'section-header'), 'button', { 'aria-expanded': 'false' }, 'section-toggle');

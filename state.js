@@ -12,6 +12,8 @@
     const DEFAULT_CATEGORIES = ['Work', 'Personal'];
     const MAX_TASK_LENGTH = 280;
     const MAX_CATEGORY_LENGTH = 40;
+    // One tomato = 25 minutes. Fixed on purpose: no setting to fiddle with.
+    const POMODORO_MS = 25 * 60 * 1000;
 
     let idCounter = 0;
 
@@ -127,6 +129,86 @@
         if (!isRunning(task)) return task;
         const { timerStartedAt, ...rest } = task;
         return { ...rest, timeSpent: elapsedMs(task, now) };
+    }
+
+    // Time left in the current tomato. Derived from the accumulated time, so no new field is stored:
+    // 0 min logged -> 25:00, 12 min -> 13:00, 37 min (one full tomato + 12) -> 13:00.
+    function remainingMs(task, now) {
+        return POMODORO_MS - (elapsedMs(task, now) % POMODORO_MS);
+    }
+
+    // Whole tomatoes completed so far
+    function ripeCount(task, now) {
+        return Math.floor(elapsedMs(task, now) / POMODORO_MS);
+    }
+
+    // Paused exactly on a tomato boundary: the state a timer is left in when it ripens
+    function isRipe(task) {
+        const spent = typeof task.timeSpent === 'number' ? task.timeSpent : 0;
+        return !isRunning(task) && spent > 0 && spent % POMODORO_MS === 0;
+    }
+
+    // Stops every running timer that has passed its next 25-minute boundary (the timer never completes a task).
+    // `watched(task)` says whether an open page has been running this timer. If so, it ripened at the boundary
+    // and is recorded as exactly that, however late it is noticed (a background tab's ticks are throttled or
+    // frozen; that delay is the app's, not time worked). A timer met for the first time, such as one left
+    // running by an older version while the page was closed, keeps its full elapsed time: nothing logged is dropped.
+    // Returns [{ task, late, kept }]: `late` is how long after the boundary it was noticed, `kept` whether that was logged.
+    function settleRipe(state, now, watched) {
+        const at = now === undefined ? Date.now() : now;
+        const stopped = [];
+        state.tasks = state.tasks.map(task => {
+            if (!isRunning(task)) return task;
+            const base = typeof task.timeSpent === 'number' && task.timeSpent > 0 ? task.timeSpent : 0;
+            const boundary = (Math.floor(base / POMODORO_MS) + 1) * POMODORO_MS;
+            const elapsed = elapsedMs(task, at);
+            if (elapsed < boundary) return task;
+            const kept = !(typeof watched === 'function' && watched(task));
+            const { timerStartedAt, ...rest } = task;
+            const next = { ...rest, timeSpent: kept ? elapsed : boundary };
+            stopped.push({ task: next, late: elapsed - boundary, kept });
+            return next;
+        });
+        return stopped;
+    }
+
+    // A running timer belongs to the top task of its category. When something else becomes the top
+    // (an add, a move, an undo), the buried task's timer is paused. Returns the paused tasks.
+    function pauseBuried(state, now) {
+        const at = now === undefined ? Date.now() : now;
+        const tops = new Map();
+        state.tasks.forEach(task => tops.set(task.category, task));
+        const paused = [];
+        state.tasks = state.tasks.map(task => {
+            if (!isRunning(task) || tops.get(task.category) === task) return task;
+            const next = settled(task, at);
+            paused.push(next);
+            return next;
+        });
+        return paused;
+    }
+
+    // The first screen shows the top task of the current category, so a running timer has to be in that
+    // category. With `follow` (nobody chose a category: a load, another tab, an import) the current category
+    // moves to the running timer. Any timer still outside the current category (the user switched away from it)
+    // is paused with its time kept. Returns { followed, paused }.
+    function keepTimerInView(state, now, follow) {
+        const at = now === undefined ? Date.now() : now;
+        const running = state.tasks.filter(isRunning);
+        let followed = false;
+        if (follow && running.length > 0 && !running.some(task => task.category === state.currentCategory)
+            && state.categories.includes(running[0].category)) {
+            state.currentCategory = running[0].category;
+            followed = true;
+        }
+        const paused = [];
+        state.tasks = state.tasks.map(task => {
+            if (!isRunning(task) || task.category === state.currentCategory) return task;
+            const next = settled(task, at);
+            paused.push(next);
+            return next;
+        });
+        return { followed, paused };
     }
 
     function runningTask(state) {
@@ -348,6 +430,13 @@
         return h > 0 ? `${h}:${two(m)}:${two(sec)}` : `${m}:${two(sec)}`;
     }
 
+    // Countdown face: always mm:ss
+    function formatRemaining(ms) {
+        const total = Math.max(0, Math.ceil(ms / 1000));
+        const two = n => String(n).padStart(2, '0');
+        return `${two(Math.floor(total / 60))}:${two(total % 60)}`;
+    }
+
     // Compact summary for finished work: 45s, 12m, 1h 05m
     function formatDuration(ms) {
         const total = Math.max(0, Math.round(ms / 1000));
@@ -362,6 +451,7 @@
         DEFAULT_CATEGORIES,
         MAX_TASK_LENGTH,
         MAX_CATEGORY_LENGTH,
+        POMODORO_MS,
         newId,
         sameId,
         createState,
@@ -373,11 +463,18 @@
         renameTask,
         isRunning,
         elapsedMs,
+        remainingMs,
+        ripeCount,
+        isRipe,
+        settleRipe,
+        pauseBuried,
+        keepTimerInView,
         runningTask,
         startTimer,
         pauseTimer,
         toggleTimer,
         formatClock,
+        formatRemaining,
         formatDuration,
         pop,
         archiveTask,

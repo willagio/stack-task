@@ -1,25 +1,28 @@
-# Stack Task Organizer
+# One Tomato
 
-A small task manager that keeps your tasks in a stack, so you work on one thing at a time. It runs in the browser with plain HTML, CSS and JavaScript: no build step, no dependencies.
+A small task manager that keeps your tasks in a stack and shows one thing: the task you are doing now, inside a 25-minute tomato. It runs in the browser with plain HTML, CSS and JavaScript: no build step, no dependencies.
 
-![Task stack with the top task highlighted](docs/screenshots/stack.png)
+![The top task on a tomato dial, ten minutes in](docs/screenshots/focus.png)
 
 ## How it works
 
-- **Stack:** a new task goes on top. The top task is the one card that stands out, and it is the one to work on; the rest wait quietly below it under "Up next". The task count is kept for screen readers rather than shown as a number.
-- **Complete:** **Done**, inside the top card, moves that task to the Completed list. Tasks can also be archived, deleted, or moved up and down with the buttons on each row. On a touch screen the row buttons stay folded away until you tap the row (one row open at a time); with a mouse they appear on hover, and with the keyboard on focus. With a mouse, drag a row and the others slide aside to make room.
+- **One thing now:** the top of the stack fills the first screen: its name, a tomato dial with the time left, and two big buttons, **Start** and **Done**. Under it a single line says what comes **Then** (tap it to jump to the waiting list). A new task goes on top. The task count is kept for screen readers rather than shown as a number.
+- **The tomato:** one tomato is 25 minutes, fixed. **Start** counts the time left; the red wedge shrinks, the tab title shows the clock, and under five minutes the tomato tilts. At 25:00 the timer stops (it never completes the task), the clock shows 00:00 and the tab title says "Ripe!": take five, then **Done**, or press **One more**. A tomato that ripens while the tab is in the background (where browsers slow down or freeze timers) is still recorded at exactly 25 minutes, and a toast tells you when you are back. The time left is derived from the time already logged on the task, so older data with a `timeSpent` shows up as ripe tomatoes and time left. A timer left running while the page was closed (for example by the earlier count-up version) is stopped when you come back, every logged minute is kept, and the task shows as ripe until you start it again.
+- **Timer rule:** a timer belongs to the top task, and a running timer is always on the first screen. When something else becomes the top (you add a task, move one, or undo), the timer of the task that got buried is paused. Switching to another category (a tab, the arrow keys, or a new category) pauses it too, with a toast; its time is kept, and **Start** carries on when you come back. If its tomato was already up, it is recorded as ripe at 25:00 instead. When the app opens (or another tab or an import changes the data) with a timer running in another category, that category is opened and the timer keeps running.
+- **Complete:** **Done** moves the task to the Completed list and the next one slides in. When the plate is empty you see how many you finished today and the tomatoes they ripened. Tasks can also be archived, deleted, or moved up and down with the buttons on each row. On a touch screen the row buttons stay folded away until you tap the row (one row open at a time); with a mouse they appear on hover, and with the keyboard on focus. With a mouse, drag a waiting row and the others slide aside to make room.
 - **Rename:** double-click a task (or press `F2` from one of its buttons) to edit it in place. `Enter` saves, `Esc` cancels.
-- **Timer:** **Start** in the top card starts a timer for that task (a lower row shows a timer button only while its timer runs); one runs at a time, and starting another pauses the first. The time spent stays on the row, and completing or archiving a task stops the timer and keeps the total next to it in the Completed or Archive list.
-- **Categories:** each category (`Work` and `Personal` to start with) has its own stack, shown as tabs. Add, rename and delete them with the buttons next to the tabs, or double-click a tab to rename it. Drag tabs, or press `Alt` + arrow keys, to reorder them.
+- **Categories:** each category (`Work` and `Personal` to start with) has its own stack, shown as tabs. Add, rename and delete them with the buttons at the bottom of the page, or double-click a tab to rename it. Drag tabs, or press `Alt` + arrow keys, to reorder them.
 - **Archive and Completed:** collapsible lists per category. Restore a task to the bottom of its stack, or delete it for good.
-- **Undo:** completing, archiving, restoring, deleting a task or a category, and importing show an Undo toast for a few seconds (also `Ctrl`/`Cmd` + `Z`). Only the latest action can be undone.
-- **Keyboard and touch:** everything is reachable by keyboard (arrow keys switch tabs, `F2` renames), and the layout adapts to phone-sized screens. On desktop the cursor starts in the input, so you can type a task straight away; the running-timer dot does not blink, and animations are switched off when your system asks for reduced motion.
+- **Undo:** completing, archiving, restoring, deleting a task or a category, and importing show an Undo toast for a few seconds (also `Ctrl`/`Cmd` + `Z`). Only the latest action can be undone. Toasts sit at the bottom of the screen, clear of the category tabs and the task to do now; the page keeps room under its tools so they stay uncovered.
+- **Keyboard and touch:** everything is reachable by keyboard (arrow keys switch tabs, `F2` renames), and the layout adapts to phone-sized screens. On desktop the cursor starts in the input, so you can type a task straight away; the dial changes once a second without animation, and animations are switched off when your system asks for reduced motion.
 
-| Completed list with Undo | Phone |
-| --- | --- |
-| ![Completed list expanded, with an Undo toast](docs/screenshots/completed.png) | ![The app on a phone-sized screen](docs/screenshots/mobile.png) |
+| Waiting | Focused | Just done |
+| --- | --- | --- |
+| ![Phone, waiting](docs/screenshots/mobile.png) | ![Phone, ten minutes in](docs/screenshots/mobile-focus.png) | ![Phone, just done, with Undo](docs/screenshots/mobile-done.png) |
 
-An empty start screen is in [docs/screenshots/empty.png](docs/screenshots/empty.png).
+More: [desktop stack](docs/screenshots/stack.png), [completed list](docs/screenshots/completed.png), [empty plate](docs/screenshots/empty.png), [empty plate on a phone](docs/screenshots/mobile-empty.png), [ripe on a phone](docs/screenshots/mobile-ripe.png), [switched away from a running tomato on a phone](docs/screenshots/mobile-switched.png).
+
+Palette (light only, WCAG AA checked in `tests/unit/contrast.test.js`): paper `#FFF4E6`, ink `#2A1A14`, soft `#6E5247`, tomato `#E0442B` (the wedge only), tomato-deep `#B42D1A`, leaf `#1F6B38`, blush `#FFE1D6`, sun `#FFC94A`.
 
 ## Run it
 

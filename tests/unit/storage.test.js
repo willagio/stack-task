@@ -425,3 +425,38 @@ test('import drops unknown fields and prototype pollution keys', () => {
 test('exportFilename uses the date', () => {
     assert.equal(Storage.exportFilename(new Date('2024-03-04T10:00:00Z')), 'tasks-backup-2024-03-04.json');
 });
+
+// ---- One Tomato: timer fields are the whole tomato state ------------------------------------
+
+test('time logged by the old count-up timer round-trips unchanged, so the tomato clock can be derived from it', () => {
+    const MIN = 60000;
+    const raw = JSON.stringify({
+        tasks: [
+            { text: 'logged', id: 'a', category: 'Work', createdAt: '2026-10-01T09:00:00.000Z', timeSpent: 37 * MIN },
+            { text: 'running', id: 'b', category: 'Work', createdAt: '2026-10-01T09:00:00.000Z', timeSpent: 5 * MIN, timerStartedAt: '2026-10-10T08:00:00.000Z' }
+        ],
+        completed: [{ text: 'done', id: 'c', category: 'Work', timeSpent: 90 * MIN, completedAt: '2026-10-02T09:00:00.000Z' }],
+        archived: [],
+        categories: ['Work', 'Personal']
+    });
+    const ls = createLocalStorageStub({ fileDB: raw });
+    const loaded = Storage.load(ls);
+    assert.deepEqual(loaded.warnings, []);
+    const [logged, running] = loaded.data.tasks;
+    assert.equal(logged.timeSpent, 37 * MIN);
+    assert.equal(State.remainingMs(logged, 0), 13 * MIN);
+    assert.equal(State.ripeCount(logged, 0), 1);
+    assert.equal(running.timerStartedAt, '2026-10-10T08:00:00.000Z');
+    Storage.save(ls, State.createState(loaded.data));
+    const again = Storage.load(ls).data;
+    assert.deepEqual(again.tasks, loaded.data.tasks);
+    assert.deepEqual(again.completed, loaded.data.completed);
+});
+
+test('the v0 fixture still loads field for field after the redesign', () => {
+    const loaded = Storage.load(createLocalStorageStub({ fileDB: original.fileDB }));
+    assert.deepEqual(loaded.warnings, []);
+    assert.deepEqual(loaded.data.tasks, JSON.parse(original.fileDB).tasks);
+    assert.deepEqual(loaded.data.completed, JSON.parse(original.fileDB).completed);
+    assert.deepEqual(loaded.data.archived, JSON.parse(original.fileDB).archived);
+});

@@ -4,31 +4,25 @@
     box-sizing: border-box;
 }
 
-/* Black, one phosphor-green accent, thin green-tinted lines. No cards, no gradients. */
+/* One Tomato: cream paper, dark brown ink, one tomato red, one leaf green. Light only.
+   Every text pair below is checked against WCAG AA in tests/unit/contrast.test.js. */
 :root {
-    --primary-gradient: #0c1f12;   /* dark green surface (dialog primary button, left bars) */
-    --secondary-gradient: #32d16a; /* the accent as a fill: the Complete button */
-    --success-gradient: #32d16a;
-    --bg-dark: #000000;
-    --bg-card: #050806;
-    --bg-input: #0b100c;
-    --bg-top: #07140b;
-    --bg-raised: #0f1810;
-    --text-primary: #e8f5ea;
-    --text-secondary: #7da184;
-    --text-on-accent: #02140a;
-    --accent: #32d16a;
-    --accent-dim: #22a85a;
-    --focus: #32d16a;
-    --danger: #ff5c5c;
-    --border-color: rgba(50, 209, 106, 0.14);
-    --border-strong: rgba(50, 209, 106, 0.45);
-    --glow: 0 0 20px rgba(50, 209, 106, 0.08);
-    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.5);
-    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.6);
-    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.7);
-    --radius: 2px;
-    --radius-lg: 2px;
+    --paper: #FFF4E6;        /* page */
+    --card: #FFFFFF;         /* the hero card, dialogs, history rows */
+    --input-bg: #FFF0DC;     /* inputs and the waiting rows */
+    --ink: #2A1A14;          /* text, the Start fill, borders, focus ring */
+    --soft: #6E5247;         /* labels and secondary text, input borders */
+    --tomato: #E0442B;       /* the wedge: graphics only, never text */
+    --tomato-deep: #B42D1A;  /* clock face, Add, Delete, accent text */
+    --leaf: #1F6B38;         /* Done */
+    --blush: #FFE1D6;        /* time already gone, toast */
+    --sun: #FFC94A;          /* the tomato tally badge */
+    --on-fill: #FFFFFF;      /* text on tomato-deep, leaf and ink fills */
+    --focus: #2A1A14;
+    --danger: #B42D1A;
+    --line: rgba(42, 26, 20, 0.16);
+    --shadow-lg: 0 10px 30px rgba(42, 26, 20, 0.25);
+    --radius: 14px;
     --font: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 }
@@ -39,14 +33,10 @@
 
 body {
     font-family: var(--font);
-    background: var(--bg-dark);
-    color: var(--text-primary);
-    height: 100vh;
-    height: 100dvh;
-    display: flex;
-    justify-content: center;
-    align-items: stretch;
-    overflow: hidden;
+    background: var(--paper);
+    color: var(--ink);
+    min-height: 100vh;
+    min-height: 100dvh;
 }
 
 button,
@@ -56,7 +46,7 @@ input {
 
 /* Visible keyboard focus everywhere; mouse clicks do not trigger it */
 :focus-visible {
-    outline: 2px solid var(--focus);
+    outline: 3px solid var(--focus);
     outline-offset: 2px;
 }
 
@@ -74,23 +64,21 @@ input {
 
 .container {
     width: 100%;
-    max-width: 560px;
-    min-height: 0;
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 0 16px;
+    min-height: 100vh;
+    min-height: 100dvh;
     display: flex;
     flex-direction: column;
 }
 
-/* A full-height column, bounded by two hairlines; no card */
+/* The bottom padding is room for a toast of up to three lines, so the tools above it stay uncovered */
 .app {
     flex: 1;
-    min-height: 0;
-    width: 100%;
-    background: var(--bg-card);
-    border-left: 1px solid var(--border-color);
-    border-right: 1px solid var(--border-color);
-    overflow: hidden;
     display: flex;
     flex-direction: column;
+    padding-bottom: calc(112px + env(safe-area-inset-bottom));
 }
 
 /* ---- Header ---- */
@@ -100,54 +88,332 @@ input {
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 14px 20px;
-    border-bottom: 1px solid var(--border-color);
-    flex-shrink: 0;
+    padding: 14px 4px 6px;
 }
 
 .title {
-    font-family: var(--mono);
-    font-size: 13px;
-    font-weight: 600;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--accent);
-}
-
-.title::before {
-    content: '> ';
-    color: var(--text-secondary);
-}
-
-.stack-indicator {
     display: flex;
-    align-items: baseline;
+    align-items: center;
+    gap: 8px;
+    font-size: 21px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+}
+
+.logo {
+    flex-shrink: 0;
+}
+
+/* ---- Hero: the one task to do now ---- */
+
+.tasks-section {
+    display: flex;
+    flex-direction: column;
+}
+
+.hero {
+    margin-top: 6px;
+    /* The next task slides in from the right (nowIn): clip sideways so it never widens the page */
+    overflow-x: clip;
+}
+
+.top-task {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 16px 18px;
+    text-align: center;
+    background: var(--card);
+    border: 2px solid var(--ink);
+    border-radius: 28px;
+    box-shadow: 0 6px 0 var(--ink);
+}
+
+.now-label {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--soft);
+}
+
+.hero-name {
+    position: relative;
+    width: 100%;
+}
+
+.top-task .task-text {
+    width: 100%;
+    padding: 2px 6px;
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    overflow: hidden;
+    border-radius: 8px;
+}
+
+/* The dial: a tomato-red wedge that is eaten away as the 25 minutes pass */
+.dial {
+    --d: clamp(168px, min(62vw, 32svh), 260px);
+    position: relative;
+    width: var(--d);
+    height: var(--d);
+    flex-shrink: 0;
+    transition: transform 0.3s ease;
+}
+
+.dial.tilt {
+    transform: rotate(-6deg);
+}
+
+.dial-svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.dial-track {
+    fill: var(--blush);
+}
+
+.dial-arc {
+    fill: none;
+    stroke: var(--tomato);
+    stroke-width: 44;
+    /* stroke-dasharray is set by script every second (a CSS value would override it) */
+}
+
+.dial-leaf {
+    fill: var(--leaf);
+}
+
+.dial-stem {
+    fill: none;
+    stroke: var(--leaf);
+    stroke-width: 3;
+    stroke-linecap: round;
+}
+
+.now-clock {
+    position: absolute;
+    left: 50%;
+    top: 54%;
+    transform: translate(-50%, -50%);
+    width: 62%;
+    aspect-ratio: 1;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--tomato-deep);
+    color: var(--on-fill);
+    font-family: var(--mono);
+    font-size: calc(var(--d) * 0.17);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+}
+
+.hero-status {
+    min-height: 1.4em;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.4;
+    color: var(--ink);
+}
+
+.top-task[data-phase="ripe"] .hero-status {
+    color: var(--tomato-deep);
+    font-weight: 800;
+}
+
+/* Tomatoes this task has ripened */
+.tally {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    margin-top: -4px;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.tally-count {
+    margin-left: 2px;
+}
+
+.now-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    width: 100%;
+}
+
+.hero-btn {
+    display: flex;
+    align-items: center;
     justify-content: center;
     gap: 8px;
-    font-family: var(--mono);
+    min-height: 56px;
+    padding: 0 14px;
+    border: 2px solid var(--ink);
+    border-radius: 28px;
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    cursor: pointer;
+    transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.15s ease;
 }
 
-.stack-count {
-    font-size: 26px;
-    font-weight: 600;
-    line-height: 1;
-    color: var(--accent);
-    text-shadow: 0 0 12px rgba(50, 209, 106, 0.3);
+.hero-btn:active:not(:disabled) {
+    transform: scale(0.94);
 }
 
-.stack-label {
-    font-size: 12px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--text-secondary);
+.timer-btn {
+    background: var(--ink);
+    color: var(--on-fill);
+}
+
+.timer-btn .icon-pause,
+.timer-btn.running .icon-play {
+    display: none;
+}
+
+.timer-btn.running .icon-pause {
+    display: block;
+}
+
+.pop-button {
+    background: var(--leaf);
+    border-color: var(--leaf);
+    color: var(--on-fill);
+}
+
+@media (hover: hover) {
+    .hero-btn:hover:not(:disabled) {
+        box-shadow: 0 3px 0 var(--ink);
+        transform: translateY(-1px);
+    }
+}
+
+.top-task.became-top {
+    animation: nowIn 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* In-place rename: looks like the text it replaces, underlined */
+.task-edit {
+    flex: 1;
+    min-width: 0;
+    width: 100%;
+    padding: 2px 4px;
+    margin: -2px -4px;
+    background: transparent;
+    border: 0;
+    border-bottom: 2px solid var(--tomato-deep);
+    border-radius: 0;
+    color: var(--ink);
+    font: inherit;
+    font-size: 15px;
+    line-height: 1.4;
+    caret-color: var(--tomato-deep);
+}
+
+.task-edit:focus {
+    outline: none;
+}
+
+.top-task .task-edit {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    margin: 0;
+    padding: 6px;
+    font-size: 24px;
+    font-weight: 700;
+    text-align: center;
+}
+
+.top-task.editing .task-text {
+    visibility: hidden;
+}
+
+.top-task.editing,
+.task-item.editing {
+    cursor: text;
+}
+
+.task-item.editing .task-actions,
+.task-item.editing:hover .task-actions,
+.task-item.editing:focus-within .task-actions {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Quiet secondary actions for the hero; they appear on hover, focus or tap */
+.top-task .task-actions {
+    justify-content: center;
+}
+
+/* ---- Then ---- */
+
+.then-line {
+    margin: 22px 4px 4px;
+    text-align: center;
+    font-size: 15px;
+    color: var(--soft);
+}
+
+.then-link {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    min-height: 44px;
+    padding: 0 14px;
+    border-radius: 999px;
+    color: var(--soft);
+    text-decoration: none;
+    white-space: pre;
+}
+
+.then-link:hover {
+    background: var(--input-bg);
+    color: var(--ink);
+}
+
+.then-label,
+.then-more {
+    flex-shrink: 0;
+}
+
+.then-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 700;
+    color: var(--ink);
+}
+
+.then-none {
+    display: inline-block;
+    padding: 10px 14px;
 }
 
 /* ---- Input ---- */
 
 .input-section {
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--border-color);
-    flex-shrink: 0;
+    padding: 12px 0 6px;
 }
 
 .input-row {
@@ -159,138 +425,96 @@ input {
     flex: 1;
     min-width: 0;
     width: 100%;
-    min-height: 44px;
-    padding: 10px 14px;
-    background: var(--bg-input);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius);
-    color: var(--text-primary);
+    min-height: 48px;
+    padding: 10px 16px;
+    background: var(--input-bg);
+    border: 2px solid var(--soft);
+    border-radius: 24px;
+    color: var(--ink);
     font-size: 16px; /* 16px keeps iOS from zooming the page on focus */
-    caret-color: var(--accent);
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    caret-color: var(--tomato-deep);
 }
 
 .task-input:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 1px rgba(50, 209, 106, 0.35), var(--glow);
+    outline: 3px solid var(--focus);
+    outline-offset: 2px;
+    border-color: var(--ink);
 }
 
 .task-input::placeholder {
-    color: var(--text-secondary);
+    color: var(--soft);
 }
 
 .add-button {
     flex-shrink: 0;
-    min-height: 44px;
-    padding: 0 18px;
-    background: transparent;
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius);
-    color: var(--accent);
-    font-family: var(--mono);
-    font-size: 13px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    min-height: 48px;
+    padding: 0 22px;
+    background: var(--tomato-deep);
+    border: 2px solid var(--tomato-deep);
+    border-radius: 24px;
+    color: var(--on-fill);
+    font-size: 16px;
+    font-weight: 800;
     cursor: pointer;
-    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    transition: transform 0.12s ease;
 }
 
-.add-button:hover {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: var(--text-on-accent);
+.add-button:active {
+    transform: scale(0.95);
 }
 
-.pop-button {
-    width: 100%;
-    min-height: 44px;
-    padding: 10px 20px;
-    background: var(--accent);
-    border: 1px solid var(--accent);
-    border-radius: var(--radius);
-    color: var(--text-on-accent);
-    font-family: var(--mono);
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    cursor: pointer;
-    transition: filter 0.15s ease, box-shadow 0.2s ease, background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-}
+/* ---- Empty plate ---- */
 
-.pop-button:hover:not(:disabled) {
-    filter: brightness(1.1);
-    box-shadow: 0 0 20px rgba(50, 209, 106, 0.25);
-}
-
-.pop-button:active:not(:disabled) {
-    filter: brightness(0.95);
-}
-
-/* With no task the Done button has nothing to finish; with one, it lives inside the top card */
-.input-section > .pop-button {
-    display: none;
-}
-
-.pop-button:disabled {
-    background: transparent;
-    border-color: var(--border-color);
-    color: var(--text-secondary);
-    box-shadow: none;
-    cursor: not-allowed;
-}
-
-/* ---- Active stack ---- */
-
-.tasks-section {
-    padding: 14px 20px 16px;
-    flex: 1 1 0;
+.hero-empty {
     display: flex;
     flex-direction: column;
-    min-height: 150px; /* an expanded Archive/Completed list never squeezes the stack below this */
-}
-
-.section-header {
-    display: flex;
-    justify-content: space-between;
     align-items: center;
-    margin-bottom: 10px;
+    gap: 6px;
+    padding: 20px 16px 8px;
+    text-align: center;
 }
 
-.section-header h2 {
-    font-family: var(--mono);
-    font-size: 11px;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.18em;
-    color: var(--text-secondary);
+.plate {
+    width: clamp(150px, min(52vw, 28svh), 220px);
+    height: auto;
+    color: var(--soft);
+}
+
+.hero-empty-title {
+    margin-top: 6px;
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+}
+
+.hero-empty-sub {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 17px;
+    color: var(--soft);
+}
+
+/* ---- Waiting rows ---- */
+
+.stack-rest {
+    margin-top: 10px;
+    scroll-margin-top: 12px;
+}
+
+.stack-rest:focus {
+    outline: none;
 }
 
 .task-stack {
     display: flex;
     flex-direction: column;
     gap: 6px;
-    flex: 1;
-    overflow-y: auto;
-    padding: 2px 4px 2px 2px; /* room for focus rings and the scrollbar */
-    min-height: 0; /* Crucial for nested flex scrolling */
-}
-
-.task-stack,
-.archived-tasks,
-.completed-tasks {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(50, 209, 106, 0.3) transparent;
+    padding: 2px;
 }
 
 .task-item {
-    --item-bg: var(--bg-input);
+    --item-bg: var(--input-bg);
     position: relative;
     display: flex;
     flex-wrap: wrap;
@@ -300,51 +524,19 @@ input {
     min-height: 52px;
     padding: 9px 12px 6px 16px;
     background: var(--item-bg);
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--line);
     border-radius: var(--radius);
     overflow: hidden;
-    transition: transform 0.22s cubic-bezier(0.2, 0, 0, 1), opacity 0.2s ease, background 0.2s ease, border-color 0.2s ease;
-}
-
-.task-item::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 2px;
-    height: 100%;
-    background: var(--accent-dim);
-    opacity: 0.6;
-}
-
-/* The top task: the one to do now. Brighter, bigger, and lit */
-.task-item.task-item.top-task {
-    --item-bg: var(--bg-top);
-    min-height: 68px;
-    padding-top: 12px;
-    padding-bottom: 10px;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 1px rgba(50, 209, 106, 0.3), var(--glow);
-}
-
-.task-item.top-task::before {
-    width: 3px;
-    opacity: 1;
-    background: var(--accent);
-}
-
-/* A task that has just become the top one: a short pulse of light around it */
-.task-item.became-top {
-    animation: nowIn 0.7s ease-out;
+    transition: transform 0.22s cubic-bezier(0.2, 0, 0, 1), opacity 0.2s ease, background 0.2s ease;
 }
 
 /* The row being dragged follows the pointer (inline transform); the others slide aside with the transition above */
 .task-item.dragging {
     z-index: 3;
     transition: none;
-    background: var(--bg-top);
-    border-color: var(--accent);
-    box-shadow: var(--shadow-lg), 0 0 0 1px rgba(50, 209, 106, 0.4), 0 0 32px rgba(50, 209, 106, 0.2);
+    background: var(--card);
+    border-color: var(--ink);
+    box-shadow: var(--shadow-lg);
     cursor: grabbing;
 }
 
@@ -357,11 +549,11 @@ input {
 
 .drag-handle {
     display: none; /* shown for mouse users below; touch has the move buttons */
-    color: var(--text-secondary);
+    color: var(--soft);
     cursor: grab;
 }
 
-.task-text {
+.task-item .task-text {
     flex: 1;
     min-width: 0;
     font-size: 15px;
@@ -372,132 +564,6 @@ input {
     -webkit-line-clamp: 2;
     line-clamp: 2;
     overflow: hidden;
-}
-
-.top-task .task-text {
-    font-size: 18px;
-    font-weight: 600;
-    line-height: 1.3;
-    text-shadow: 0 0 14px rgba(50, 209, 106, 0.12);
-    -webkit-line-clamp: 4;
-    line-clamp: 4;
-}
-
-/* In-place rename: looks like the text it replaces, underlined in the accent */
-.task-edit {
-    flex: 1;
-    min-width: 0;
-    width: 100%;
-    padding: 2px 4px;
-    margin: -2px -4px;
-    background: transparent;
-    border: 0;
-    border-bottom: 1px solid var(--accent);
-    border-radius: 0;
-    color: var(--text-primary);
-    font: inherit;
-    font-size: 15px;
-    line-height: 1.4;
-    caret-color: var(--accent);
-}
-
-.task-edit:focus {
-    outline: none;
-}
-
-.top-task .task-edit {
-    font-size: 18px;
-    font-weight: 600;
-}
-
-.task-item.editing {
-    cursor: text;
-}
-
-.task-item.editing .task-actions,
-.task-item.editing:hover .task-actions,
-.task-item.editing:focus-within .task-actions {
-    opacity: 0;
-    pointer-events: none;
-}
-
-/* Elapsed time: dim when paused, lit with a steady dot while running */
-.task-time {
-    flex-shrink: 0;
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: 0.04em;
-    font-variant-numeric: tabular-nums;
-    color: var(--text-secondary);
-}
-
-.task-time.running {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    color: var(--accent);
-}
-
-.task-time.running::before {
-    content: '';
-    width: 5px;
-    height: 5px;
-    background: var(--accent);
-    box-shadow: 0 0 6px rgba(50, 209, 106, 0.8);
-}
-
-.top-task .task-time {
-    font-size: 12px;
-}
-
-.timer-btn.running {
-    border-color: var(--border-strong);
-    color: var(--accent);
-}
-
-.stack-divider {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-shrink: 0;
-    margin: 6px 0 0;
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--text-secondary);
-}
-
-.stack-divider::before,
-.stack-divider::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: var(--border-color);
-}
-
-/* The top card's own controls: Start and Done, next to the task they act on */
-.now-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    flex: 1 0 100%;
-}
-
-.now-actions .pop-button {
-    width: auto;
-    padding: 0 18px;
-}
-
-.now-actions .with-label {
-    width: auto;
-    gap: 8px;
-    padding: 0 16px;
-    font-family: var(--mono);
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
 }
 
 /* Action buttons: on their own row, always visible (touch, and anything without hover) */
@@ -517,22 +583,22 @@ input {
     height: 44px;
     padding: 0;
     background: transparent;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius);
-    color: var(--text-secondary);
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    color: var(--soft);
     cursor: pointer;
     transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
 .task-action-btn:hover:not(:disabled),
 .history-btn:hover {
-    background: rgba(50, 209, 106, 0.08);
-    border-color: var(--border-strong);
-    color: var(--accent);
+    background: var(--card);
+    border-color: var(--ink);
+    color: var(--ink);
 }
 
 .task-action-btn:disabled {
-    opacity: 0.3;
+    opacity: 0.35;
     cursor: not-allowed;
 }
 
@@ -544,7 +610,6 @@ input {
 .remove-btn:hover:not(:disabled),
 .history-delete:hover {
     border-color: var(--danger);
-    background: rgba(255, 92, 92, 0.08);
     color: var(--danger);
 }
 
@@ -554,23 +619,6 @@ input {
         flex-wrap: nowrap;
         padding: 9px 12px 9px 36px;
         cursor: grab;
-    }
-
-    .task-item.task-item.top-task {
-        flex-wrap: wrap;
-        padding-top: 12px;
-        padding-bottom: 12px;
-    }
-
-    .top-task .task-actions {
-        top: 8px;
-        transform: none;
-    }
-
-    .now-actions .pop-button,
-    .now-actions .with-label {
-        min-height: 36px;
-        height: 36px;
     }
 
     .task-item:active {
@@ -585,7 +633,7 @@ input {
         transform: translateY(-50%);
     }
 
-    .task-actions {
+    .task-item .task-actions {
         position: absolute;
         right: 6px;
         top: 50%;
@@ -597,8 +645,19 @@ input {
         transition: opacity 0.15s ease;
     }
 
+    .top-task .task-actions {
+        position: absolute;
+        top: 10px;
+        right: 12px;
+        flex: none;
+        opacity: 0;
+        transition: opacity 0.15s ease;
+    }
+
     .task-item:hover .task-actions,
-    .task-item:focus-within .task-actions {
+    .task-item:focus-within .task-actions,
+    .top-task:hover .task-actions,
+    .top-task:focus-within .task-actions {
         opacity: 1;
     }
 
@@ -617,12 +676,17 @@ input {
     .history-item:focus-within .history-actions {
         opacity: 1;
     }
+
+    .hero-btn {
+        min-height: 52px;
+    }
 }
 
-/* Touch: lower rows keep their buttons folded away until the row is tapped or a button is focused.
+/* Touch: buttons stay folded away until the card is tapped or a button is focused.
    Clipped, not display:none, so a keyboard or screen reader can still reach them. */
 @media not all and (hover: hover) and (pointer: fine) {
-    .task-item:not(.open) .task-actions:not(:focus-within) {
+    .task-item:not(.open) .task-actions:not(:focus-within),
+    .top-task:not(.open) .task-actions:not(:focus-within) {
         position: absolute;
         width: 1px;
         height: 1px;
@@ -634,10 +698,9 @@ input {
 
 .empty-state {
     text-align: center;
-    padding: 32px 16px;
-    font-family: var(--mono);
-    color: var(--text-secondary);
-    font-size: 13px;
+    padding: 24px 16px;
+    color: var(--soft);
+    font-size: 14px;
     line-height: 1.7;
 }
 
@@ -645,22 +708,17 @@ input {
 
 .archive-section,
 .completed-section {
-    flex: 0 1 auto;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    overflow: hidden;
-    padding: 0 20px;
-    border-top: 1px solid var(--border-color);
+    margin-top: 14px;
+    border-top: 2px dashed var(--line);
 }
 
-.collapsible-section .section-header {
-    margin-bottom: 0;
-    flex-shrink: 0;
-}
-
-.collapsible-section h2 {
+.section-header h2 {
     width: 100%;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--soft);
 }
 
 .section-toggle {
@@ -668,7 +726,7 @@ input {
     align-items: center;
     gap: 8px;
     width: 100%;
-    min-height: 44px;
+    min-height: 48px;
     background: none;
     border: none;
     border-radius: var(--radius);
@@ -681,7 +739,7 @@ input {
 }
 
 .section-toggle:hover {
-    color: var(--accent);
+    color: var(--ink);
 }
 
 .toggle-icon {
@@ -694,11 +752,11 @@ input {
 }
 
 .section-count {
-    min-width: 22px;
-    padding: 1px 6px;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius);
-    font-size: 11px;
+    min-width: 24px;
+    padding: 1px 8px;
+    border: 1px solid var(--soft);
+    border-radius: 999px;
+    font-size: 12px;
     letter-spacing: 0;
     text-align: center;
 }
@@ -712,11 +770,9 @@ input {
     display: flex;
     flex-direction: column;
     gap: 6px;
-    flex: 1 1 auto;
-    min-height: 0;
-    max-height: 250px;
+    max-height: 280px;
     overflow-y: auto;
-    padding: 2px 4px 16px 2px;
+    padding: 2px 4px 14px 2px;
 }
 
 .history-item {
@@ -728,8 +784,8 @@ input {
     min-height: 52px;
     padding: 6px 8px 6px 14px;
     border-radius: var(--radius);
-    border: 1px solid var(--border-color);
-    background: transparent;
+    border: 1px solid var(--line);
+    background: var(--card);
     overflow: hidden;
 }
 
@@ -738,16 +794,16 @@ input {
     position: absolute;
     top: 0;
     left: 0;
-    width: 2px;
+    width: 4px;
     height: 100%;
 }
 
 .completed-item::before {
-    background: var(--accent);
+    background: var(--leaf);
 }
 
 .archived-item::before {
-    background: var(--text-secondary);
+    background: var(--soft);
 }
 
 .history-content {
@@ -758,7 +814,7 @@ input {
 .history-text {
     font-size: 14px;
     line-height: 1.4;
-    color: var(--text-secondary);
+    color: var(--soft);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -766,13 +822,12 @@ input {
 
 .completed-text {
     text-decoration: line-through;
-    text-decoration-color: rgba(50, 209, 106, 0.5);
+    text-decoration-color: var(--leaf);
 }
 
 .history-time {
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--text-secondary);
+    font-size: 12px;
+    color: var(--soft);
 }
 
 .history-actions {
@@ -782,66 +837,82 @@ input {
     flex-shrink: 0;
 }
 
-/* ---- Footer ---- */
+/* ---- Tools: category and backup ---- */
 
-.footer-actions {
+.tools {
+    margin-top: auto;
+    padding-top: 18px;
     display: flex;
+    flex-direction: column;
     gap: 8px;
-    padding: 12px 20px;
-    border-top: 1px solid var(--border-color);
-    flex-shrink: 0;
 }
 
-.footer-btn {
-    flex: 1;
-    min-height: 44px;
-    background: transparent;
-    border: 1px solid var(--border-color);
-    color: var(--text-secondary);
-    padding: 8px 16px;
-    border-radius: var(--radius);
-    font-family: var(--mono);
-    font-size: 12px;
-    font-weight: 500;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    cursor: pointer;
-    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+.tools-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.tool-btn {
+    flex: 1 1 0;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
+    min-height: 44px;
+    padding: 8px 14px;
+    background: transparent;
+    border: 1px solid var(--soft);
+    border-radius: 22px;
+    color: var(--soft);
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
-.footer-btn:hover {
-    border-color: var(--border-strong);
-    color: var(--accent);
+.tool-btn:hover:not(:disabled) {
+    background: var(--card);
+    border-color: var(--ink);
+    color: var(--ink);
+}
+
+.tool-btn-danger:hover:not(:disabled) {
+    border-color: var(--danger);
+    color: var(--danger);
+}
+
+.tool-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
 }
 
 /* ---- Toast ---- */
 
-/* At the top: the bottom of the screen holds the Export / Import buttons, which a toast must not cover */
+/* At the bottom, within thumb reach: the top holds the category chips and the task to do now, which a toast
+   must not cover. The page keeps room below its tools (.app padding) so a toast does not cover them either. */
 .toast {
     position: fixed;
     left: 50%;
-    top: max(12px, env(safe-area-inset-top));
+    bottom: calc(12px + env(safe-area-inset-bottom));
     transform: translateX(-50%);
     z-index: 20;
     display: flex;
     align-items: center;
     gap: 4px;
     width: min(calc(100vw - 24px), 440px);
-    padding: 4px 4px 4px 16px;
-    background: var(--bg-raised);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow-lg), var(--glow);
+    padding: 4px 4px 4px 18px;
+    background: var(--blush);
+    border: 2px solid var(--ink);
+    border-radius: 24px;
+    box-shadow: 0 4px 0 var(--ink);
     animation: toastIn 0.2s ease;
 }
 
 .toast-error {
     border-color: var(--danger);
-    box-shadow: var(--shadow-lg);
+    box-shadow: 0 4px 0 var(--danger);
 }
 
 .toast-message {
@@ -849,6 +920,7 @@ input {
     min-width: 0;
     padding: 8px 0;
     font-size: 14px;
+    font-weight: 500;
     line-height: 1.4;
     overflow-wrap: anywhere;
 }
@@ -860,8 +932,8 @@ input {
     padding: 0 12px;
     background: none;
     border: none;
-    border-radius: var(--radius);
-    color: var(--text-secondary);
+    border-radius: 22px;
+    color: var(--soft);
     font-size: 14px;
     cursor: pointer;
     display: flex;
@@ -870,17 +942,14 @@ input {
 }
 
 .toast-btn:hover {
-    background: rgba(50, 209, 106, 0.08);
-    color: var(--text-primary);
+    background: var(--card);
+    color: var(--ink);
 }
 
 .toast-action {
-    font-family: var(--mono);
-    font-size: 13px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--accent);
-    font-weight: 700;
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--tomato-deep);
 }
 
 /* ---- Dialog ---- */
@@ -889,15 +958,15 @@ input {
     margin: auto;
     width: min(calc(100vw - 32px), 380px);
     padding: 0;
-    background: var(--bg-card);
-    color: var(--text-primary);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-lg), var(--glow);
+    background: var(--card);
+    color: var(--ink);
+    border: 2px solid var(--ink);
+    border-radius: 24px;
+    box-shadow: 0 6px 0 var(--ink);
 }
 
 .dialog::backdrop {
-    background: rgba(0, 0, 0, 0.75);
+    background: rgba(42, 26, 20, 0.55);
 }
 
 .dialog-form {
@@ -908,18 +977,16 @@ input {
 }
 
 .dialog-title {
-    font-family: var(--mono);
-    font-size: 13px;
-    font-weight: 600;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--accent);
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    color: var(--ink);
 }
 
 .dialog-message {
     font-size: 14px;
     line-height: 1.5;
-    color: var(--text-secondary);
+    color: var(--soft);
 }
 
 .dialog-field {
@@ -930,8 +997,8 @@ input {
 
 .dialog-field label {
     font-size: 13px;
-    font-weight: 500;
-    color: var(--text-secondary);
+    font-weight: 600;
+    color: var(--soft);
 }
 
 .dialog-error {
@@ -948,51 +1015,51 @@ input {
 
 .dialog-btn {
     min-height: 44px;
-    padding: 0 18px;
+    padding: 0 20px;
     background: transparent;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius);
-    color: var(--text-primary);
-    font-family: var(--mono);
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    border: 2px solid var(--ink);
+    border-radius: 22px;
+    color: var(--ink);
+    font-size: 14px;
+    font-weight: 700;
     cursor: pointer;
 }
 
 .dialog-btn:hover {
-    border-color: var(--border-strong);
+    background: var(--input-bg);
 }
 
 .dialog-btn-primary {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: var(--text-on-accent);
+    background: var(--ink);
+    color: var(--on-fill);
 }
 
-.dialog-btn-danger {
-    background: var(--danger);
-    border-color: var(--danger);
-    color: #1a0505;
+.dialog-btn-primary:hover {
+    background: var(--ink);
+}
+
+.dialog-btn-danger,
+.dialog-btn-danger:hover {
+    background: var(--tomato-deep);
+    border-color: var(--tomato-deep);
+    color: var(--on-fill);
 }
 
 @keyframes nowIn {
-    0% {
-        box-shadow: 0 0 0 1px rgba(50, 209, 106, 0.3), 0 0 0 0 rgba(50, 209, 106, 0.7), var(--glow);
+    from {
+        opacity: 0;
+        transform: translateX(24px) scale(0.96);
     }
-    60% {
-        box-shadow: 0 0 0 1px rgba(50, 209, 106, 0.3), 0 0 0 10px rgba(50, 209, 106, 0), var(--glow);
-    }
-    100% {
-        box-shadow: 0 0 0 1px rgba(50, 209, 106, 0.3), 0 0 0 0 rgba(50, 209, 106, 0), var(--glow);
+    to {
+        opacity: 1;
+        transform: none;
     }
 }
 
 @keyframes toastIn {
     from {
         opacity: 0;
-        transform: translate(-50%, -8px);
+        transform: translate(-50%, 8px);
     }
     to {
         opacity: 1;
@@ -1000,61 +1067,13 @@ input {
     }
 }
 
-/* ---- Small screens: the whole page scrolls instead of the column ---- */
-
-@media (max-width: 600px), (max-height: 700px) {
-    body {
-        display: block;
-        height: auto;
-        min-height: 100vh;
-        min-height: 100dvh;
-        overflow: auto;
+@media (max-width: 400px) {
+    .top-task {
+        padding: 14px 12px 16px;
     }
 
-    .container {
-        max-width: none;
-        min-height: 100vh;
-        min-height: 100dvh;
-    }
-
-    .app {
-        border-width: 0;
-        overflow: visible;
-    }
-
-    .header {
-        padding: 12px 16px;
-    }
-
-    .input-section,
-    .tasks-section {
-        padding: 14px 16px;
-    }
-
-    .tasks-section {
-        flex: none;
-        min-height: 0;
-    }
-
-    .task-stack {
-        overflow: visible;
-        padding: 2px;
-    }
-
-    .archive-section,
-    .completed-section {
-        flex: none;
-        overflow: visible;
-        padding: 0 16px;
-    }
-
-    .footer-actions {
-        margin-top: auto;
-        padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
-    }
-
-    .toast {
-        top: max(8px, env(safe-area-inset-top));
+    .top-task .task-text {
+        font-size: 26px;
     }
 }
 
