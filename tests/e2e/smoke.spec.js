@@ -454,3 +454,43 @@ test('keyboard only: Done in the card completes, and focus stays on the new Done
     await expect(page.locator('#popButton')).toBeDisabled();
     await expect(page.locator('#popButton')).toBeHidden();
 });
+
+test.describe('desktop mouse: Done clicked while a task name is being edited', () => {
+    // The edit field saves on blur at mousedown; the click on Done must still complete the top task
+    for (const [label, row, expected] of [
+        ['the top task', 'c', { stack: ['a', 'b'], completed: ['renamed'] }],
+        ['a lower row', 'b', { stack: ['a', 'renamed'], completed: ['c'] }]
+    ]) {
+        test(`editing ${label}, then clicking Done saves the name and completes the top task`, async ({ page }) => {
+            await page.setViewportSize({ width: 1280, height: 800 });
+            await page.goto('/');
+            for (const text of ['a', 'b', 'c']) await addTask(page, text);
+            await page.locator('#taskStack .task-text', { hasText: new RegExp(`^${row}$`) }).dblclick();
+            await page.locator('#taskStack .task-edit').fill('renamed');
+            const box = await page.locator('#popButton').boundingBox();
+            await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+            await expect(page.locator('#taskStack .task-text')).toHaveText([...expected.stack].reverse());
+            await expect(page.locator('#taskStack .task-edit')).toHaveCount(0);
+            const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('fileDB')));
+            expect(stored.tasks.map(t => t.text)).toEqual(expected.stack);
+            expect(stored.completed.map(t => t.text)).toEqual(expected.completed);
+            await expect(page.locator('#toast')).toContainText(`Completed "${expected.completed[0]}"`);
+        });
+    }
+});
+
+test('a change from another tab keeps the top card, and focus on Done, in place', async ({ page, context }) => {
+    await page.goto('/');
+    for (const text of ['a', 'b']) await addTask(page, text);
+    await page.evaluate(() => { window.__topCard = document.querySelector('#taskStack .top-task'); });
+    await page.locator('#popButton').focus();
+    const other = await context.newPage();
+    await other.goto('/');
+    await other.locator('#taskStack .task-text', { hasText: /^a$/ }).dblclick();
+    await other.locator('#taskStack .task-edit').fill('a from the other tab');
+    await other.locator('#taskStack .task-edit').press('Enter');
+    await expect(page.locator('#taskStack .task-text')).toHaveText(['b', 'a from the other tab']);
+    await expect(page.locator('#popButton')).toBeFocused();
+    expect(await page.evaluate(() => document.querySelector('#taskStack .top-task') === window.__topCard)).toBe(true);
+    await other.close();
+});

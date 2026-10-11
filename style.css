@@ -421,7 +421,7 @@ input {
     pointer-events: none;
 }
 
-/* Elapsed time: dim when paused, lit with a blinking dot while running */
+/* Elapsed time: dim when paused, lit with a steady dot while running */
 .task-time {
     flex-shrink: 0;
     font-family: var(--mono);
@@ -453,14 +453,6 @@ input {
 .timer-btn.running {
     border-color: var(--border-strong);
     color: var(--accent);
-}
-
-.task-index {
-    flex-shrink: 0;
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: 0.04em;
-    color: var(--text-secondary);
 }
 
 .stack-divider {
@@ -994,12 +986,6 @@ input {
     }
     100% {
         box-shadow: 0 0 0 1px rgba(50, 209, 106, 0.3), 0 0 0 0 rgba(50, 209, 106, 0), var(--glow);
-    }
-}
-
-@keyframes blink {
-    to {
-        opacity: 0.2;
     }
 }
 

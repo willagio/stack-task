@@ -510,3 +510,45 @@ test('older stored data still loads and keeps every task after the Done button m
     assert.equal(stored.completed.length, before.completed.length);
     assert.equal(stored.archived.length, before.archived.length);
 });
+
+test('the top card and its Done button stay in the page while the same task is on top', () => {
+    const app = boot();
+    app.add('a'); app.add('b'); app.add('c');
+    const stack = app.$('taskStack');
+    const top = stack.querySelector('.top-task');
+    const nowActions = top.querySelector('.now-actions');
+    const timer = nowActions.querySelector('.timer-btn');
+    const row = text => stack.querySelectorAll('.task-item').find(i => i.querySelector('.task-text').textContent === text);
+    // renaming a lower row and then the top task saves on blur and re-renders around the same nodes
+    row('b').querySelector('.task-text').dispatch('dblclick');
+    const lowerEdit = stack.querySelector('.task-edit');
+    lowerEdit.value = 'b2';
+    lowerEdit.dispatch('blur');
+    assert.ok(row('b2'));
+    top.querySelector('.task-text').dispatch('dblclick');
+    const topEdit = top.querySelector('.task-edit');
+    topEdit.value = 'c2';
+    topEdit.dispatch('blur');
+    assert.equal(app.topText(), 'c2');
+    assert.equal(stack.querySelector('.top-task'), top, 'the same card');
+    assert.equal(stack.children[0], top, 'still first');
+    assert.equal(app.$('popButton').parentNode, nowActions);
+    assert.equal(app.$('popButton').getAttribute('aria-label'), 'Done: "c2"');
+    assert.equal(top.querySelectorAll('.task-edit').length, 0);
+    assert.equal(top.querySelectorAll('.task-text').length, 1);
+    assert.equal(top.classList.contains('editing'), false);
+    // Start is updated in place, label and all
+    timer.click();
+    assert.equal(nowActions.querySelector('.timer-btn'), timer);
+    assert.ok(timer.classList.contains('running'));
+    assert.equal(timer.textContent, 'Pause');
+    assert.equal(timer.getAttribute('aria-label'), 'Pause timer for "c2"');
+    assert.equal(nowActions.children.length, 2);
+    assert.equal(nowActions.children[1], app.$('popButton'), 'Done stays last');
+    // Done still completes the renamed top task; then the button moves into the next card
+    app.$('popButton').click();
+    assert.equal(app.stored().completed[0].text, 'c2');
+    assert.equal(app.topText(), 'b2');
+    assert.notEqual(stack.querySelector('.top-task'), top);
+    assert.ok(stack.querySelector('.top-task').contains(app.$('popButton')));
+});
