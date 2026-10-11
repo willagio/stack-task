@@ -51,6 +51,9 @@
     }
 
     function create(doc, refs) {
+        // The Done button lives in the input section until a task exists; then it moves into the top card
+        const popHome = refs.popButton ? refs.popButton.parentNode : null;
+
         // el('div', { class, text, attrs, data }, children)
         function el(tag, options, children) {
             const node = doc.createElement(tag);
@@ -193,7 +196,11 @@
         function renderStack(state) {
             const visible = State.inCategory(state.tasks, state.currentCategory);
             if (visible.length === 0) {
-                refs.taskStack.replaceChildren(emptyState('No tasks in stack', 'Add one to get started!'));
+                if (popHome) {
+                    popHome.appendChild(refs.popButton);
+                    refs.popButton.setAttribute('aria-label', 'Done');
+                }
+                refs.taskStack.replaceChildren(emptyState('No tasks in stack', 'Type one above and press Enter.'));
                 return;
             }
             const now = Date.now();
@@ -209,24 +216,35 @@
                     el('div', { class: 'drag-handle', attrs: { 'aria-hidden': 'true' } }, [icon('grip')]),
                     el('div', { class: 'task-text', text: task.text, attrs: { title: task.text } })
                 ];
-                const time = timeLabel(task, now);
+                // Elapsed time shows on the top task and on whichever timer is running; paused time on lower rows stays out of sight
+                const time = (isTop || running) ? timeLabel(task, now) : null;
                 if (time) children.push(time);
-                if (!isTop) children.push(el('div', { class: 'task-index', text: `#${visible.length - index}` }));
+                const timerLabel = running ? `Pause timer for "${name}"` : `Start timer for "${name}"`;
+                const timerBtn = iconButton(running ? 'task-action-btn timer-btn running' : 'task-action-btn timer-btn',
+                    running ? 'pause' : 'play', timerLabel, data('timer'));
+                const actions = [
+                    iconButton('task-action-btn move-up-btn', 'up', `Move "${name}" up`, data('up'), isTop),
+                    iconButton('task-action-btn move-down-btn', 'down', `Move "${name}" down`, data('down'), index === 0),
+                    iconButton('task-action-btn archive-btn', 'archive', `Archive "${name}"`, data('archive')),
+                    iconButton('task-action-btn remove-btn', 'close', `Delete "${name}"`, data('remove'))
+                ];
+                if (isTop) {
+                    // The one thing to do now: Start and Done sit right next to it
+                    timerBtn.classList.add('with-label');
+                    timerBtn.appendChild(el('span', { text: running ? 'Pause' : 'Start' }));
+                    refs.popButton.setAttribute('aria-label', `Done: "${name}"`);
+                    children.push(el('div', { class: 'task-actions' }, actions));
+                    children.push(el('div', { class: 'now-actions' }, [timerBtn, refs.popButton]));
+                } else {
+                    // Lower rows stay quiet: a timer button only while that timer is running
+                    if (running) actions.unshift(timerBtn);
+                    children.push(el('div', { class: 'task-actions' }, actions));
+                }
                 return el('div', {
                     class: isTop ? 'task-item top-task' : 'task-item',
                     attrs: { role: 'listitem' },
                     data: { id: task.id }
-                }, [
-                    ...children,
-                    el('div', { class: 'task-actions' }, [
-                        iconButton(running ? 'task-action-btn timer-btn running' : 'task-action-btn timer-btn', running ? 'pause' : 'play',
-                            running ? `Pause timer for "${name}"` : `Start timer for "${name}"`, data('timer')),
-                        iconButton('task-action-btn move-up-btn', 'up', `Move "${name}" up`, data('up'), isTop),
-                        iconButton('task-action-btn move-down-btn', 'down', `Move "${name}" down`, data('down'), index === 0),
-                        iconButton('task-action-btn archive-btn', 'archive', `Archive "${name}"`, data('archive')),
-                        iconButton('task-action-btn remove-btn', 'close', `Delete "${name}"`, data('remove'))
-                    ])
-                ]);
+                }, children);
             }).reverse();
             if (items.length > 1) {
                 const rest = items.length - 1;

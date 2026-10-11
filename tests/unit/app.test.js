@@ -440,3 +440,73 @@ test('a pointer drag that ends where it started changes nothing and slides back'
     button.dispatch('pointermove', { pointerId: 3, clientX: 10, clientY: 200 });
     assert.equal(top.classList.contains('dragging'), false);
 });
+
+test('the top card carries Start and Done; lower rows have no number or idle timer', () => {
+    const app = boot();
+    app.add('a'); app.add('b'); app.add('c');
+    const top = app.$('taskStack').querySelector('.top-task');
+    assert.ok(top.contains(app.$('popButton')), 'Done lives inside the top card');
+    assert.equal(app.$('popButton').getAttribute('aria-label'), 'Done: "c"');
+    assert.ok(top.querySelector('.now-actions .timer-btn'), 'Start sits beside Done');
+    assert.equal(app.$('taskStack').querySelectorAll('.task-index').length, 0);
+    assert.equal(app.$('taskStack').querySelectorAll('.task-item').filter(i => i !== top && i.querySelector('.timer-btn')).length, 0);
+    // a running timer keeps its pause button and clock on a lower row
+    const rowOf = text => app.$('taskStack').querySelectorAll('.task-item').find(i => i.querySelector('.task-text').textContent === text);
+    rowOf('c').querySelector('.timer-btn').click();
+    rowOf('c').querySelector('.move-down-btn').click();
+    assert.equal(rowOf('c').classList.contains('top-task'), false);
+    assert.ok(rowOf('c').querySelector('.timer-btn.running'));
+    assert.ok(rowOf('c').querySelector('.task-time.running'));
+});
+
+test('the Done button returns to the input section when the stack is empty, and focus follows it', () => {
+    const app = boot();
+    app.add('only');
+    app.$('popButton').focus();
+    app.$('popButton').click();
+    assert.ok(!app.$('taskStack').contains(app.$('popButton')), 'not inside a card any more');
+    assert.ok(app.$('popButton').parentNode, 'still in the document');
+    assert.equal(app.$('popButton').disabled, true);
+    assert.equal(app.document.activeElement, app.$('taskInput'), 'keyboard focus moves on to the input');
+    app.$('toastAction').click();                         // Undo
+    assert.equal(app.topText(), 'only');
+    assert.ok(app.$('taskStack').querySelector('.top-task').contains(app.$('popButton')));
+});
+
+test('keyboard focus stays on Done after it completes a task', () => {
+    const app = boot();
+    app.add('a'); app.add('b');
+    app.$('popButton').focus();
+    app.$('popButton').click();
+    assert.equal(app.topText(), 'a');
+    assert.equal(app.document.activeElement, app.$('popButton'));
+    assert.ok(app.$('taskStack').querySelector('.top-task').contains(app.$('popButton')));
+});
+
+test('clicking a row opens it (one at a time) and it stays open across re-renders', () => {
+    const app = boot();
+    app.add('a'); app.add('b'); app.add('c');
+    const row = text => app.$('taskStack').querySelectorAll('.task-item').find(i => i.querySelector('.task-text').textContent === text);
+    row('b').querySelector('.task-text').click();
+    assert.ok(row('b').classList.contains('open'));
+    row('a').querySelector('.task-text').click();
+    assert.ok(row('a').classList.contains('open'));
+    assert.ok(!row('b').classList.contains('open'), 'only one row open');
+    row('a').querySelector('.move-up-btn').click();          // re-renders
+    assert.ok(row('a').classList.contains('open'), 'still open after a re-render');
+    row('a').querySelector('.task-text').click();
+    assert.ok(!row('a').classList.contains('open'), 'a second click closes it');
+    // buttons inside a row do not toggle it
+    row('b').querySelector('.archive-btn').click();
+    assert.ok(!app.$('taskStack').querySelectorAll('.task-item').some(i => i.classList.contains('open')));
+});
+
+test('older stored data still loads and keeps every task after the Done button moved', () => {
+    const app = boot({ fileDB: original.fileDB });
+    const before = app.stored ? JSON.parse(original.fileDB) : null;
+    app.add('new one');
+    const stored = app.stored();
+    assert.equal(stored.tasks.length, before.tasks.length + 1);
+    assert.equal(stored.completed.length, before.completed.length);
+    assert.equal(stored.archived.length, before.archived.length);
+});

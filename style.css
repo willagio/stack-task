@@ -153,7 +153,6 @@ input {
 .input-row {
     display: flex;
     gap: 8px;
-    margin-bottom: 8px;
 }
 
 .task-input {
@@ -232,6 +231,11 @@ input {
 
 .pop-button:active:not(:disabled) {
     filter: brightness(0.95);
+}
+
+/* With no task the Done button has nothing to finish; with one, it lives inside the top card */
+.input-section > .pop-button {
+    display: none;
 }
 
 .pop-button:disabled {
@@ -440,7 +444,6 @@ input {
     height: 5px;
     background: var(--accent);
     box-shadow: 0 0 6px rgba(50, 209, 106, 0.8);
-    animation: blink 1.2s steps(2, start) infinite;
 }
 
 .top-task .task-time {
@@ -479,6 +482,30 @@ input {
     flex: 1;
     height: 1px;
     background: var(--border-color);
+}
+
+/* The top card's own controls: Start and Done, next to the task they act on */
+.now-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    flex: 1 0 100%;
+}
+
+.now-actions .pop-button {
+    width: auto;
+    padding: 0 18px;
+}
+
+.now-actions .with-label {
+    width: auto;
+    gap: 8px;
+    padding: 0 16px;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
 }
 
 /* Action buttons: on their own row, always visible (touch, and anything without hover) */
@@ -538,8 +565,20 @@ input {
     }
 
     .task-item.task-item.top-task {
+        flex-wrap: wrap;
         padding-top: 12px;
         padding-bottom: 12px;
+    }
+
+    .top-task .task-actions {
+        top: 8px;
+        transform: none;
+    }
+
+    .now-actions .pop-button,
+    .now-actions .with-label {
+        min-height: 36px;
+        height: 36px;
     }
 
     .task-item:active {
@@ -585,6 +624,19 @@ input {
     .history-item:hover .history-actions,
     .history-item:focus-within .history-actions {
         opacity: 1;
+    }
+}
+
+/* Touch: lower rows keep their buttons folded away until the row is tapped or a button is focused.
+   Clipped, not display:none, so a keyboard or screen reader can still reach them. */
+@media not all and (hover: hover) and (pointer: fine) {
+    .task-item:not(.open) .task-actions:not(:focus-within) {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
     }
 }
 

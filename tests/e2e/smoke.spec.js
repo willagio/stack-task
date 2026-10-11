@@ -369,8 +369,14 @@ test.describe('phone-sized touch viewport', () => {
         expect(metrics.height).toBeGreaterThanOrEqual(metrics.viewport);
         expect(metrics.inputFont).toBeGreaterThanOrEqual(16); // avoids the iOS focus zoom
 
-        // row actions are visible without hovering, and every control is at least 44px
-        await expect(page.locator('#taskStack .top-task .task-actions')).toHaveCSS('opacity', '1');
+        // the top card carries Start and Done; lower rows fold their buttons away until the row is tapped
+        await expect(page.locator('#taskStack .top-task .now-actions')).toBeVisible();
+        const lower = page.locator('#taskStack .task-item:not(.top-task)');
+        expect((await lower.locator('.task-actions').boundingBox()).height).toBeLessThanOrEqual(1);
+        await lower.locator('.task-text').tap();
+        await expect(lower).toHaveClass(/open/);
+
+        // every control is at least 44px
         const selectors = ['#addTaskBtn', '#popButton', '#taskInput', '#addCategoryBtn', '#renameCategoryBtn',
             '#deleteCategoryBtn', '.tab-button', '.section-toggle', '#exportBtn', '#importBtn',
             '#taskStack .task-item:not(.top-task) .task-action-btn'];
@@ -400,4 +406,51 @@ test.describe('phone-sized touch viewport', () => {
         const footer = await page.locator('#exportBtn').boundingBox();
         expect(toast.y + toast.height).toBeLessThanOrEqual(footer.y + 1);
     });
+});
+
+test.describe('phone: folded row buttons and the Done button inside the card', () => {
+    const { defaultBrowserType, ...phone } = devices['Pixel 7'];
+    test.use(phone);
+
+    test('a folded button unfolds on focus, and tapping Done completes the task', async ({ page }) => {
+        await page.goto('/');
+        await addTask(page, 'a');
+        await addTask(page, 'b');
+        await addTask(page, 'c');
+        // row numbers and paused-timer buttons are gone from the lower rows
+        await expect(page.locator('.task-index')).toHaveCount(0);
+        await expect(page.locator('#taskStack .task-item:not(.top-task) .timer-btn')).toHaveCount(0);
+
+        // keyboard focus on a folded button opens it at full size with a solid outline
+        const up = page.locator('#taskStack .task-item:not(.top-task) .move-up-btn').first();
+        await up.focus();
+        const box = await up.boundingBox();
+        expect(box.width).toBeGreaterThanOrEqual(43.5);
+        expect(box.height).toBeGreaterThanOrEqual(43.5);
+        expect(await up.evaluate(el => getComputedStyle(el).outlineStyle)).toBe('solid');
+        await page.locator('#taskInput').focus();
+
+        // tapping Done inside the card completes the top task (no layout shift swallows the tap)
+        await page.locator('#popButton').tap();
+        await expect(topTask(page)).toHaveText('b');
+        // Start a timer from the card: the dot is steady, not blinking
+        await page.locator('#taskStack .top-task .timer-btn').tap();
+        await expect(page.locator('.task-time.running')).toBeVisible();
+        expect(await page.locator('.task-time.running').evaluate(el => getComputedStyle(el, '::before').animationName)).toBe('none');
+    });
+});
+
+test('keyboard only: Done in the card completes, and focus stays on the new Done button', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('#taskInput')).toBeFocused(); // desktop starts in the input
+    await addTask(page, 'first');
+    await addTask(page, 'second');
+    await page.locator('#popButton').focus();
+    await page.keyboard.press('Enter');
+    await expect(topTask(page)).toHaveText('first');
+    await expect(page.locator('#popButton')).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#taskInput')).toBeFocused();
+    await expect(page.locator('#popButton')).toBeDisabled();
+    await expect(page.locator('#popButton')).toBeHidden();
 });
